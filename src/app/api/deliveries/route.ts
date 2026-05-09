@@ -1,5 +1,6 @@
 import {
 	MAX_FILE_SIZE,
+	MAX_TEXT_SIZE,
 	contentDisposition,
 	createCode,
 	getCloudflareBindings,
@@ -7,6 +8,7 @@ import {
 	getSafeFileName,
 	hashCode,
 	json,
+	parseDeliveryKind,
 	parseContentLength,
 	parseExpiryHours,
 	parseMaxDownloads,
@@ -28,7 +30,17 @@ export async function POST(request: Request) {
 		return json({ error: "Missing or invalid content-length header." }, 411);
 	}
 
-	if (size > MAX_FILE_SIZE) {
+	const deliveryKind = parseDeliveryKind(request);
+	if (deliveryKind === null) {
+		return json({ error: "Invalid x-delivery-kind header." }, 400);
+	}
+
+	const maxSize = deliveryKind === "text" ? MAX_TEXT_SIZE : MAX_FILE_SIZE;
+	if (size > maxSize) {
+		if (deliveryKind === "text") {
+			return json({ error: "Text is larger than 256 KB." }, 413);
+		}
+
 		return json({ error: "File is larger than 100 MB." }, 413);
 	}
 
@@ -52,7 +64,7 @@ export async function POST(request: Request) {
 	const objectKey = `deliveries/${createdAt}/${id}`;
 	const pickupCode = createCode(6);
 	const manageCode = createCode(16);
-	const contentType = getContentType(request);
+	const contentType = deliveryKind === "text" ? "text/plain;charset=utf-8" : getContentType(request);
 	let pipePromise: Promise<void> | undefined;
 
 	try {
@@ -78,6 +90,7 @@ export async function POST(request: Request) {
 					object_key,
 					file_name,
 					content_type,
+					delivery_kind,
 					size,
 					pickup_code_hash,
 					manage_code_hash,
@@ -85,13 +98,14 @@ export async function POST(request: Request) {
 					download_count,
 					expires_at,
 					created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
 			)
 			.bind(
 				id,
 				objectKey,
 				fileName,
 				contentType,
+				deliveryKind,
 				size,
 				await hashCode(pickupCode),
 				await hashCode(manageCode),
@@ -115,6 +129,10 @@ export async function POST(request: Request) {
 
 	const origin = new URL(request.url).origin;
 	const encodedPickupCode = encodeURIComponent(pickupCode);
+	const pickupUrl =
+		deliveryKind === "text"
+			? `${origin}/?pickupCode=${encodedPickupCode}`
+			: `${origin}/api/deliveries/${encodedPickupCode}/download`;
 
 	return json(
 		{
@@ -122,11 +140,12 @@ export async function POST(request: Request) {
 			pickupCode,
 			manageCode,
 			fileName,
+			kind: deliveryKind,
 			size,
 			maxDownloads,
 			expiresAt: new Date(expiresAt).toISOString(),
-			pickupUrl: `${origin}/api/deliveries/${encodedPickupCode}/download`,
-			downloadUrl: `${origin}/api/deliveries/${encodedPickupCode}/download`,
+			pickupUrl,
+			downloadUrl: pickupUrl,
 		},
 		201,
 	);

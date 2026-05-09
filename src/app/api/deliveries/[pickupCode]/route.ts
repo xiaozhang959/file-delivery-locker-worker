@@ -15,6 +15,7 @@ export async function GET(_request: Request, context: { params: Promise<{ pickup
 				object_key,
 				file_name,
 				content_type,
+				delivery_kind,
 				size,
 				pickup_code_hash,
 				manage_code_hash,

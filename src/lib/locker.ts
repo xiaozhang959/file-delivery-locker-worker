@@ -1,15 +1,20 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export const MAX_FILE_SIZE = 100 * 1024 * 1024;
+export const MAX_TEXT_SIZE = 256 * 1024;
 export const ALLOWED_EXPIRY_HOURS = new Set([1, 24, 168]);
+export const DELIVERY_KINDS = new Set(["file", "text"]);
 export const MIN_DOWNLOADS = 1;
 export const MAX_DOWNLOADS = 10;
+
+export type DeliveryKind = "file" | "text";
 
 export type DeliveryRow = {
 	id: string;
 	object_key: string;
 	file_name: string;
 	content_type: string;
+	delivery_kind: DeliveryKind;
 	size: number;
 	pickup_code_hash: string;
 	manage_code_hash: string;
@@ -25,6 +30,7 @@ export type DeliveryPublic = {
 	id: string;
 	fileName: string;
 	contentType: string;
+	kind: DeliveryKind;
 	size: number;
 	maxDownloads: number;
 	downloadCount: number;
@@ -67,6 +73,15 @@ export function parseContentLength(request: Request) {
 	}
 
 	return size;
+}
+
+export function parseDeliveryKind(request: Request): DeliveryKind | null {
+	const value = request.headers.get("x-delivery-kind")?.trim() || "file";
+	if (!DELIVERY_KINDS.has(value)) {
+		return null;
+	}
+
+	return value as DeliveryKind;
 }
 
 export function parseExpiryHours(request: Request) {
@@ -137,6 +152,7 @@ export function serializeDelivery(row: DeliveryRow, now = Date.now()): DeliveryP
 		id: row.id,
 		fileName: row.file_name,
 		contentType: row.content_type,
+		kind: row.delivery_kind,
 		size: row.size,
 		maxDownloads: row.max_downloads,
 		downloadCount: row.download_count,

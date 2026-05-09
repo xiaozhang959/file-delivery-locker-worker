@@ -1,6 +1,6 @@
 import {
+	MAX_TEXT_SIZE,
 	type DeliveryRow,
-	contentDisposition,
 	getCloudflareBindings,
 	hashCode,
 	isUnavailable,
@@ -42,6 +42,14 @@ export async function GET(_request: Request, context: { params: Promise<{ pickup
 		return json({ error: "Delivery not found." }, 404);
 	}
 
+	if (row.delivery_kind !== "text") {
+		return json({ error: "Preview is only available for text deliveries." }, 415);
+	}
+
+	if (row.size > MAX_TEXT_SIZE) {
+		return json({ error: "Text is too large to preview." }, 413);
+	}
+
 	const now = Date.now();
 	const unavailable = isUnavailable(row, now);
 	if (unavailable) {
@@ -55,9 +63,10 @@ export async function GET(_request: Request, context: { params: Promise<{ pickup
 	const object = await bucket.get(row.object_key);
 	if (!object) {
 		ctx.waitUntil(markDeleted(db, bucket, row, now, "missing_object"));
-		return json({ error: "Stored file is missing." }, 404);
+		return json({ error: "Stored text is missing." }, 404);
 	}
 
+	const text = await object.text();
 	const reachedLimit = row.download_count + 1 >= row.max_downloads;
 	const result = await db
 		.prepare(
@@ -82,14 +91,9 @@ export async function GET(_request: Request, context: { params: Promise<{ pickup
 		ctx.waitUntil(bucket.delete(row.object_key));
 	}
 
-	return new Response(object.body, {
-		headers: {
-			"cache-control": "no-store",
-			"content-disposition": contentDisposition(row.file_name),
-			"content-length": String(object.size),
-			"content-type": object.httpMetadata?.contentType ?? row.content_type,
-			etag: object.httpEtag,
-		},
+	return json({
+		text,
+		remainingDownloads: Math.max(0, row.max_downloads - row.download_count - 1),
 	});
 }
 

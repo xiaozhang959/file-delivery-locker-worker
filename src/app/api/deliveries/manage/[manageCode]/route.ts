@@ -15,6 +15,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ man
 				object_key,
 				file_name,
 				content_type,
+				delivery_kind,
 				size,
 				pickup_code_hash,
 				manage_code_hash,
