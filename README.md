@@ -51,13 +51,6 @@ bun install
 bunx wrangler login
 ```
 
-创建 R2 bucket 和 D1 数据库：
-
-```bash
-bunx wrangler r2 bucket create file-delivery-locker
-bunx wrangler d1 create file-delivery-locker
-```
-
 复制配置模板：
 
 ```bash
@@ -68,9 +61,23 @@ cp wrangler.example.jsonc wrangler.jsonc
 
 - `name`：你的 Worker 名称。
 - `services[0].service`：和 `name` 保持一致。
+- `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，不要改成 bucket 名称。
+- `d1_databases[0].binding`：保持为 `DB`，不要改成数据库名称。
+
+创建 R2 bucket 和 D1 数据库：
+
+```bash
+bunx wrangler r2 bucket create file-delivery-locker
+bunx wrangler d1 create file-delivery-locker
+```
+
+然后编辑 `wrangler.jsonc`：
+
 - `r2_buckets[0].bucket_name`：刚创建的 R2 bucket 名称。
 - `d1_databases[0].database_name`：刚创建的 D1 数据库名称。
 - `d1_databases[0].database_id`：`wrangler d1 create` 输出的数据库 ID。
+
+注意：`binding` 是代码里的变量名，必须唯一。这个项目的代码通过 `env.FILE_BUCKET` 访问 R2，通过 `env.DB` 访问 D1；资源真实名称应该写在 `bucket_name`、`database_name` 和 `database_id` 里。
 
 不要把密钥写进 `wrangler.jsonc`。本项目当前没有自定义密钥；后续如果增加密钥，开发环境放到 `.dev.vars`，线上使用 `bunx wrangler secret put <NAME>`。
 

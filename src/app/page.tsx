@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
+import { GooeyToaster, gooeyToast } from "goey-toast";
 
 type UploadResult = {
 	id: string;
@@ -52,23 +53,43 @@ export default function Home() {
 	const [manageCode, setManageCode] = useState("");
 	const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
 	const [delivery, setDelivery] = useState<Delivery | null>(null);
-	const [notice, setNotice] = useState("");
 	const [busy, setBusy] = useState<"upload" | "lookup" | "revoke" | null>(null);
 
 	const selectedFileSize = useMemo(() => (file ? formatBytes(file.size) : "未选择"), [file]);
 
+	function notify(message: string, type: "default" | "success" | "error" | "warning" = "default") {
+		const options = { preset: "subtle" as const, showTimestamp: false, showProgress: true };
+
+		if (type === "success") {
+			gooeyToast.success(message, options);
+			return;
+		}
+
+		if (type === "error") {
+			gooeyToast.error(message, options);
+			return;
+		}
+
+		if (type === "warning") {
+			gooeyToast.warning(message, options);
+			return;
+		}
+
+		gooeyToast(message, options);
+	}
+
 	async function uploadDelivery(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		setNotice("");
+		gooeyToast.dismiss();
 		setUploadResult(null);
 
 		if (!file) {
-			setNotice("请选择一个文件。");
+			notify("请选择一个文件。", "warning");
 			return;
 		}
 
 		if (file.size > 100 * 1024 * 1024) {
-			setNotice("文件不能超过 100 MB。");
+			notify("文件不能超过 100 MB。", "warning");
 			return;
 		}
 
@@ -93,9 +114,9 @@ export default function Home() {
 			setUploadResult(data);
 			setPickupCode(data.pickupCode);
 			setManageCode(data.manageCode);
-			setNotice("文件已入柜。");
+			notify("文件已入柜。", "success");
 		} catch (error) {
-			setNotice(error instanceof Error ? error.message : "上传失败。");
+			notify(error instanceof Error ? error.message : "上传失败。", "error");
 		} finally {
 			setBusy(null);
 		}
@@ -105,10 +126,10 @@ export default function Home() {
 		event?.preventDefault();
 		const code = pickupCode.trim();
 		setDelivery(null);
-		setNotice("");
+		gooeyToast.dismiss();
 
 		if (!code) {
-			setNotice("请输入取件码。");
+			notify("请输入取件码。", "warning");
 			return;
 		}
 
@@ -122,7 +143,7 @@ export default function Home() {
 
 			setDelivery(data.delivery);
 		} catch (error) {
-			setNotice(error instanceof Error ? error.message : "查询失败。");
+			notify(error instanceof Error ? error.message : "查询失败。", "error");
 		} finally {
 			setBusy(null);
 		}
@@ -131,10 +152,10 @@ export default function Home() {
 	async function revokeDelivery(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		const code = manageCode.trim();
-		setNotice("");
+		gooeyToast.dismiss();
 
 		if (!code) {
-			setNotice("请输入管理码。");
+			notify("请输入管理码。", "warning");
 			return;
 		}
 
@@ -148,10 +169,10 @@ export default function Home() {
 				throw new Error(data.error ?? "撤回失败。");
 			}
 
-			setNotice("文件已撤回。");
+			notify("文件已撤回。", "success");
 			setDelivery(null);
 		} catch (error) {
-			setNotice(error instanceof Error ? error.message : "撤回失败。");
+			notify(error instanceof Error ? error.message : "撤回失败。", "error");
 		} finally {
 			setBusy(null);
 		}
@@ -159,32 +180,20 @@ export default function Home() {
 
 	function copy(value: string) {
 		void navigator.clipboard.writeText(value);
-		setNotice("已复制。");
+		notify("已复制。", "success");
 	}
 
 	return (
-		<main className="min-h-screen bg-[#f5f7f1] text-[#18221f]">
-			<section className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-5 py-8 sm:px-8 lg:px-10">
-				<header className="flex flex-col gap-3 border-b border-[#d8ded0] pb-6 sm:flex-row sm:items-end sm:justify-between">
-					<div>
-						<p className="text-sm font-medium text-[#637064]">R2 + D1</p>
-						<h1 className="text-3xl font-semibold tracking-normal text-[#10201b] sm:text-5xl">文件快递柜</h1>
-					</div>
-					<div className="grid grid-cols-3 gap-2 text-center text-sm">
-						<Metric label="上限" value="100 MB" />
-						<Metric label="期限" value="1h-7d" />
-						<Metric label="次数" value="1-10" />
-					</div>
-				</header>
-
-				<div className="grid flex-1 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-					<form className="panel flex flex-col gap-6" onSubmit={uploadDelivery}>
+		<main className="app-shell">
+			<section className="page-shell">
+				<div className="workspace-grid">
+					<form className="panel panel-feature flex flex-col gap-6" onSubmit={uploadDelivery}>
 						<div className="flex items-center justify-between gap-4">
 							<div>
-								<h2 className="text-xl font-semibold">寄件</h2>
-								<p className="mt-1 text-sm text-[#64716a]">{file?.name ?? "选择一个文件放入快递柜"}</p>
+								<h2>寄件</h2>
+								<p className="panel-copy">{file?.name ?? "选择一个文件放入快递柜"}</p>
 							</div>
-							<span className="rounded-full bg-[#dceade] px-3 py-1 text-sm font-medium text-[#24472e]">{selectedFileSize}</span>
+							<span className="badge-coral">{selectedFileSize}</span>
 						</div>
 
 						<label className="dropzone">
@@ -221,7 +230,7 @@ export default function Home() {
 						</div>
 
 						<button className="primary-button" disabled={busy === "upload"} type="submit">
-							<span>↑</span>
+							<span aria-hidden="true">↑</span>
 							{busy === "upload" ? "上传中" : "放入快递柜"}
 						</button>
 
@@ -235,10 +244,10 @@ export default function Home() {
 					</form>
 
 					<div className="flex flex-col gap-6">
-						<form className="panel flex flex-col gap-5" onSubmit={lookupDelivery}>
+						<form className="panel panel-dark flex flex-col gap-5" onSubmit={lookupDelivery}>
 							<div>
-								<h2 className="text-xl font-semibold">取件</h2>
-								<p className="mt-1 text-sm text-[#64716a]">输入取件码查看文件状态</p>
+								<h2>取件</h2>
+								<p className="panel-copy">输入取件码查看文件状态</p>
 							</div>
 							<label className="field">
 								<span>取件码</span>
@@ -250,7 +259,7 @@ export default function Home() {
 								/>
 							</label>
 							<button className="secondary-button" disabled={busy === "lookup"} type="submit">
-								<span>⌕</span>
+								<span aria-hidden="true">⌕</span>
 								{busy === "lookup" ? "查询中" : "查询文件"}
 							</button>
 
@@ -259,7 +268,7 @@ export default function Home() {
 									<div className="flex items-start justify-between gap-4">
 										<div className="min-w-0">
 											<p className="truncate font-semibold">{delivery.fileName}</p>
-											<p className="mt-1 text-sm text-[#64716a]">{formatBytes(delivery.size)}</p>
+											<p className="panel-copy">{formatBytes(delivery.size)}</p>
 										</div>
 										<span className="status-pill">{statusText[delivery.status]}</span>
 									</div>
@@ -276,7 +285,7 @@ export default function Home() {
 												: undefined
 										}
 									>
-										<span>↓</span>
+										<span aria-hidden="true">↓</span>
 										下载文件
 									</a>
 								</div>
@@ -285,8 +294,8 @@ export default function Home() {
 
 						<form className="panel flex flex-col gap-5" onSubmit={revokeDelivery}>
 							<div>
-								<h2 className="text-xl font-semibold">管理</h2>
-								<p className="mt-1 text-sm text-[#64716a]">使用管理码撤回文件</p>
+								<h2>管理</h2>
+								<p className="panel-copy">使用管理码撤回文件</p>
 							</div>
 							<label className="field">
 								<span>管理码</span>
@@ -298,25 +307,16 @@ export default function Home() {
 								/>
 							</label>
 							<button className="danger-button" disabled={busy === "revoke"} type="submit">
-								<span>×</span>
+								<span aria-hidden="true">×</span>
 								{busy === "revoke" ? "撤回中" : "撤回文件"}
 							</button>
 						</form>
 					</div>
 				</div>
 
-				{notice && <p className="notice">{notice}</p>}
+				<GooeyToaster closeButton="top-right" position="bottom-right" preset="subtle" showProgress visibleToasts={3} />
 			</section>
 		</main>
-	);
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-	return (
-		<div className="rounded-md border border-[#d8ded0] bg-white/70 px-3 py-2">
-			<p className="text-xs text-[#64716a]">{label}</p>
-			<p className="font-semibold">{value}</p>
-		</div>
 	);
 }
 
@@ -343,9 +343,9 @@ function CodeBlock({
 
 function Mini({ label, value }: { label: string; value: string }) {
 	return (
-		<div className="rounded-md bg-[#f3f5ec] px-3 py-2">
-			<p className="text-xs text-[#64716a]">{label}</p>
-			<p className="font-medium">{value}</p>
+		<div className="mini-card">
+			<p>{label}</p>
+			<strong>{value}</strong>
 		</div>
 	);
 }

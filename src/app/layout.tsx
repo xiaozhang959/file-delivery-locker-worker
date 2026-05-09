@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./goey-toast.css";
 
 export const metadata: Metadata = {
 	title: "文件快递柜",
@@ -14,7 +15,7 @@ export default function RootLayout({
 	return (
 		<html lang="zh-CN">
 			<head>
-				<link rel="icon" href="/favicon.svg" type="image/svg+xml"></link>
+				<link rel="icon" href="/favicon.icow" type="image/svg+xml"></link>
 			</head>
 			<body>{children}</body>
 		</html>
