@@ -1,0 +1,53 @@
+/**
+ * Copy this file to wrangler.jsonc and replace the placeholder values with
+ * your own Cloudflare Worker, R2, and D1 resource names/IDs.
+ *
+ * Do not put secrets here. Use `.dev.vars` locally and `wrangler secret put`
+ * for deployed environments.
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "<worker-name>",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-05-09",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".open-next/assets"
+	},
+	"images": {
+		// Enable image optimization.
+		// See https://opennext.js.org/cloudflare/howtos/image
+		"binding": "IMAGES"
+	},
+	"services": [
+		{
+			// Self-reference service binding. This service value should match `name`.
+			// See https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "<worker-name>"
+		}
+	],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"upload_source_maps": true,
+	"r2_buckets": [
+		{
+			"binding": "FILE_BUCKET",
+			"bucket_name": "<r2-bucket-name>"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "<d1-database-name>",
+			"database_id": "<d1-database-id>",
+			"migrations_dir": "migrations"
+		}
+	]
+}
