@@ -49,6 +49,11 @@ type TextPreview = {
 	remainingDownloads: number;
 };
 
+type SiteStats = {
+	uploadCount: number;
+	downloadCount: number;
+};
+
 const MAX_TEXT_SIZE = 256 * 1024;
 const PICKUP_CODE_LENGTH = 6;
 const TEXT_FILE_NAME = "寄存文本.txt";
@@ -77,6 +82,7 @@ export default function Home() {
 	const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
 	const [delivery, setDelivery] = useState<Delivery | null>(null);
 	const [textPreview, setTextPreview] = useState<TextPreview | null>(null);
+	const [stats, setStats] = useState<SiteStats | null>(null);
 	const [busy, setBusy] = useState<"upload" | "lookup" | "revoke" | null>(null);
 
 	const selectedFileSize = useMemo(() => (file ? formatBytes(file.size) : "未选择"), [file]);
@@ -90,6 +96,10 @@ export default function Home() {
 			const frame = window.requestAnimationFrame(() => setPickupCode(normalizePickupCode(code)));
 			return () => window.cancelAnimationFrame(frame);
 		}
+	}, []);
+
+	useEffect(() => {
+		void loadStats();
 	}, []);
 
 	function notify(message: string, type: "default" | "success" | "error" | "warning" = "default") {
@@ -183,6 +193,7 @@ export default function Home() {
 			setUploadResult(data);
 			setPickupCode(data.pickupCode);
 			setManageCode(data.manageCode);
+			void loadStats();
 			notify(deliveryMode === "text" ? "文本已入柜。" : "文件已入柜。", "success");
 		} catch (error) {
 			notify(error instanceof Error ? error.message : "上传失败。", "error");
@@ -216,6 +227,7 @@ export default function Home() {
 			if (data.delivery.kind === "text" && data.delivery.status === "available") {
 				await previewTextDelivery(code);
 			}
+			void loadStats();
 		} catch (error) {
 			setDelivery(null);
 			setTextPreview(null);
@@ -236,6 +248,23 @@ export default function Home() {
 			text: data.text,
 			remainingDownloads: data.remainingDownloads,
 		});
+	}
+
+	async function loadStats() {
+		try {
+			const response = await fetch("/api/stats");
+			const data = (await response.json()) as ApiError & SiteStats;
+			if (!response.ok) {
+				throw new Error(data.error ?? "统计读取失败。");
+			}
+
+			setStats({
+				uploadCount: data.uploadCount,
+				downloadCount: data.downloadCount,
+			});
+		} catch (error) {
+			console.error(error);
+		}
 	}
 
 	async function revokeDelivery(event: FormEvent<HTMLFormElement>) {
@@ -275,6 +304,10 @@ export default function Home() {
 	return (
 		<main className="app-shell">
 			<section className="page-shell">
+				<div className="stats-strip" aria-label="站点统计">
+					<StatCounter label="上传" value={stats?.uploadCount} />
+					<StatCounter label="下载" value={stats?.downloadCount} />
+				</div>
 				<div className="workspace-grid">
 					<form className="panel panel-feature flex flex-col gap-6" onSubmit={uploadDelivery}>
 						<div className="flex items-center justify-between gap-4">
@@ -416,18 +449,19 @@ export default function Home() {
 											</div>
 										) : null
 									) : (
-										<a
-											className="primary-button justify-center"
-											aria-disabled={delivery.status !== "available"}
+											<a
+												className="primary-button justify-center"
+												aria-disabled={delivery.status !== "available"}
 												href={
 													delivery.status === "available"
 														? `/api/deliveries/${encodeURIComponent(normalizePickupCode(pickupCode))}/download`
 														: undefined
 												}
-										>
-											<span aria-hidden="true">↓</span>
-											下载文件
-										</a>
+												onClick={() => window.setTimeout(() => void loadStats(), 1200)}
+											>
+												<span aria-hidden="true">↓</span>
+												下载文件
+											</a>
 									)}
 								</div>
 							)}
@@ -487,6 +521,15 @@ function Mini({ label, value }: { label: string; value: string }) {
 		<div className="mini-card">
 			<p>{label}</p>
 			<strong>{value}</strong>
+		</div>
+	);
+}
+
+function StatCounter({ label, value }: { label: string; value?: number }) {
+	return (
+		<div className="stat-counter">
+			<span>{label}</span>
+			<strong>{typeof value === "number" ? formatCount(value) : "--"}</strong>
 		</div>
 	);
 }
@@ -598,6 +641,10 @@ function formatBytes(value: number) {
 	}
 
 	return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatCount(value: number) {
+	return new Intl.NumberFormat("zh-CN").format(value);
 }
 
 function formatTime(value: string) {
