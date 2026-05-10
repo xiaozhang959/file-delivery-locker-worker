@@ -5,9 +5,15 @@ import {
 	hashCode,
 	isUnavailable,
 	json,
+	requireSiteAuth,
 } from "@/lib/locker";
 
-export async function GET(_request: Request, context: { params: Promise<{ pickupCode: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ pickupCode: string }> }) {
+	const unauthorized = await requireSiteAuth(request);
+	if (unauthorized) {
+		return unauthorized;
+	}
+
 	const { db, bucket, ctx } = await getCloudflareBindings();
 	if (!db || !bucket) {
 		return json({ error: "Cloudflare bindings are not available." }, 500);

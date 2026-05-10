@@ -6,6 +6,12 @@ export const ALLOWED_EXPIRY_HOURS = new Set([1, 24, 168]);
 export const DELIVERY_KINDS = new Set(["file", "text"]);
 export const MIN_DOWNLOADS = 1;
 export const MAX_DOWNLOADS = 10;
+export const SITE_AUTH_COOKIE = "file_delivery_locker_site_auth";
+export const SITE_AUTH_MAX_AGE = 60 * 60 * 24 * 7;
+
+type SiteEnv = CloudflareEnv & {
+	SITE_PASSWORD?: string;
+};
 
 export type DeliveryKind = "file" | "text";
 
@@ -42,11 +48,68 @@ export type DeliveryPublic = {
 
 export async function getCloudflareBindings() {
 	const { env, ctx } = await getCloudflareContext({ async: true });
+	const siteEnv = env as SiteEnv;
 	return {
 		db: env.DB,
 		bucket: env.FILE_BUCKET,
+		sitePassword: normalizeSitePassword(siteEnv.SITE_PASSWORD),
 		ctx,
 	};
+}
+
+export async function getSitePassword() {
+	const { env } = await getCloudflareContext({ async: true });
+	return normalizeSitePassword((env as SiteEnv).SITE_PASSWORD);
+}
+
+export function isSiteLockEnabled(sitePassword: string | null) {
+	return sitePassword !== null;
+}
+
+export async function isSiteAuthTokenValid(sitePassword: string | null, token?: string | null) {
+	if (!isSiteLockEnabled(sitePassword)) {
+		return true;
+	}
+
+	if (!token) {
+		return false;
+	}
+
+	return token === (await createSiteAuthToken(sitePassword));
+}
+
+export async function isSiteRequestAuthorized(request: Request) {
+	const sitePassword = await getSitePassword();
+	return isSiteAuthTokenValid(sitePassword, getCookieValue(request.headers.get("cookie"), SITE_AUTH_COOKIE));
+}
+
+export async function requireSiteAuth(request: Request) {
+	if (await isSiteRequestAuthorized(request)) {
+		return null;
+	}
+
+	return json({ error: "Site password is required." }, 401);
+}
+
+export async function createSiteAuthToken(sitePassword: string) {
+	return hashText(`file-delivery-locker:${sitePassword}`);
+}
+
+export function serializeSiteAuthCookie(token: string, requestUrl: string) {
+	const url = new URL(requestUrl);
+	const parts = [
+		`${SITE_AUTH_COOKIE}=${token}`,
+		"Path=/",
+		"HttpOnly",
+		"SameSite=Lax",
+		`Max-Age=${SITE_AUTH_MAX_AGE}`,
+	];
+
+	if (url.protocol === "https:") {
+		parts.push("Secure");
+	}
+
+	return parts.join("; ");
 }
 
 export function json(data: unknown, init?: ResponseInit | number) {
@@ -132,8 +195,32 @@ export function createCode(byteLength: number) {
 }
 
 export async function hashCode(code: string) {
-	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code.trim().toUpperCase()));
+	return hashText(code.trim().toUpperCase());
+}
+
+async function hashText(value: string) {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
 	return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function normalizeSitePassword(value?: string) {
+	const password = value?.trim();
+	return password ? password : null;
+}
+
+function getCookieValue(header: string | null, name: string) {
+	if (!header) {
+		return null;
+	}
+
+	for (const cookie of header.split(";")) {
+		const [rawName, ...rawValue] = cookie.trim().split("=");
+		if (rawName === name) {
+			return rawValue.join("=");
+		}
+	}
+
+	return null;
 }
 
 export function serializeDelivery(row: DeliveryRow, now = Date.now()): DeliveryPublic {

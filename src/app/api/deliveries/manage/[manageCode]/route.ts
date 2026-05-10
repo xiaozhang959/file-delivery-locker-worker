@@ -1,6 +1,11 @@
-import { type DeliveryRow, getCloudflareBindings, hashCode, json } from "@/lib/locker";
+import { type DeliveryRow, getCloudflareBindings, hashCode, json, requireSiteAuth } from "@/lib/locker";
 
-export async function DELETE(_request: Request, context: { params: Promise<{ manageCode: string }> }) {
+export async function DELETE(request: Request, context: { params: Promise<{ manageCode: string }> }) {
+	const unauthorized = await requireSiteAuth(request);
+	if (unauthorized) {
+		return unauthorized;
+	}
+
 	const { db, bucket } = await getCloudflareBindings();
 	if (!db || !bucket) {
 		return json({ error: "Cloudflare bindings are not available." }, 500);

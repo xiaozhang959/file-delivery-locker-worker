@@ -63,6 +63,7 @@ cp wrangler.example.jsonc wrangler.jsonc
 - `services[0].service`：和 `name` 保持一致。
 - `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，不要改成 bucket 名称。
 - `d1_databases[0].binding`：保持为 `DB`，不要改成数据库名称。
+- `vars.SITE_PASSWORD`：站点访问密码。留空时关闭密码门禁。
 
 创建 R2 bucket 和 D1 数据库：
 
@@ -79,7 +80,15 @@ bunx wrangler d1 create file-delivery-locker
 
 注意：`binding` 是代码里的变量名，必须唯一。这个项目的代码通过 `env.FILE_BUCKET` 访问 R2，通过 `env.DB` 访问 D1；资源真实名称应该写在 `bucket_name`、`database_name` 和 `database_id` 里。
 
-不要把密钥写进 `wrangler.jsonc`。本项目当前没有自定义密钥；后续如果增加密钥，开发环境放到 `.dev.vars`，线上使用 `bunx wrangler secret put <NAME>`。
+站点密码使用普通 Worker variable，方便在 Cloudflare 仪表盘操作。可以在 `wrangler.jsonc` 里设置：
+
+```jsonc
+"vars": {
+  "SITE_PASSWORD": "your-password"
+}
+```
+
+也可以部署后在 Cloudflare 仪表盘的 Worker Variables 中编辑 `SITE_PASSWORD`。变量不存在或为空字符串时，首页和 API 都不需要密码；有值时，需要先在首页输入密码。
 
 ## 初始化数据库
 
@@ -134,6 +143,8 @@ bun run upload
 ```
 
 ## 页面使用
+
+如果设置了 `SITE_PASSWORD`，打开首页后先输入站点访问密码。验证通过后浏览器会保存一个 7 天有效的登录 Cookie；修改 `SITE_PASSWORD` 后需要重新输入新密码。
 
 寄件：
 
@@ -221,6 +232,7 @@ curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
 | --- | --- |
 | `201` | 创建成功。 |
 | `400` | 请求头或请求体不合法。 |
+| `401` | 已设置 `SITE_PASSWORD`，但当前请求没有通过站点密码验证。 |
 | `404` | 找不到投递或 R2 对象缺失。 |
 | `410` | 文件已过期、已撤回或下载次数已用尽。 |
 | `411` | 缺少合法的 `content-length`。 |
@@ -231,7 +243,7 @@ curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
 ## 运维和安全注意事项
 
 - `wrangler.example.jsonc` 已包含 `compatibility_date`、`nodejs_compat`、静态资源绑定、R2、D1 和 observability 配置；新建环境时优先从它复制。
-- 不要把 secret 写入源码或 `wrangler.jsonc`。使用 `.dev.vars` 和 `wrangler secret put`。
+- `SITE_PASSWORD` 按普通 Worker variable 管理，方便在 Cloudflare 仪表盘修改；留空即关闭站点密码门禁。
 - 保持 R2、D1 通过 Worker 绑定访问，不要在 Worker 内部绕到 Cloudflare REST API。
 - 大文件处理保持流式读取和流式响应，不要改成 `arrayBuffer()` 或 `text()` 读取整文件。
 - 后台清理、过期删除等响应后工作应继续使用 `ctx.waitUntil()`。

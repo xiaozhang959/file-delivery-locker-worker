@@ -2,8 +2,8 @@
  * Copy this file to wrangler.jsonc and replace the placeholder values with
  * your own Cloudflare Worker, R2, and D1 resource names/IDs.
  *
- * Do not put secrets here. Use `.dev.vars` locally and `wrangler secret put`
- * for deployed environments.
+ * SITE_PASSWORD is a regular Worker variable so it can also be edited from
+ * the Cloudflare dashboard. Leave it empty to disable the password gate.
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
@@ -36,6 +36,9 @@
 		"head_sampling_rate": 1
 	},
 	"upload_source_maps": true,
+	"vars": {
+		"SITE_PASSWORD": ""
+	},
 	"r2_buckets": [
 		{
 			"binding": "FILE_BUCKET",

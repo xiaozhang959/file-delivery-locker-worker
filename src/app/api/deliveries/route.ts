@@ -12,9 +12,15 @@ import {
 	parseContentLength,
 	parseExpiryHours,
 	parseMaxDownloads,
+	requireSiteAuth,
 } from "@/lib/locker";
 
 export async function POST(request: Request) {
+	const unauthorized = await requireSiteAuth(request);
+	if (unauthorized) {
+		return unauthorized;
+	}
+
 	const { db, bucket } = await getCloudflareBindings();
 	if (!db || !bucket) {
 		return json({ error: "Cloudflare bindings are not available." }, 500);

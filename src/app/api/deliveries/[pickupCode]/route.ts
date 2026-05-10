@@ -1,6 +1,11 @@
-import { type DeliveryRow, getCloudflareBindings, hashCode, json, serializeDelivery } from "@/lib/locker";
+import { type DeliveryRow, getCloudflareBindings, hashCode, json, requireSiteAuth, serializeDelivery } from "@/lib/locker";
 
-export async function GET(_request: Request, context: { params: Promise<{ pickupCode: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ pickupCode: string }> }) {
+	const unauthorized = await requireSiteAuth(request);
+	if (unauthorized) {
+		return unauthorized;
+	}
+
 	const { db } = await getCloudflareBindings();
 	if (!db) {
 		return json({ error: "Cloudflare bindings are not available." }, 500);
