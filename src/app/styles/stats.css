@@ -1,0 +1,56 @@
+.stats-lockup {
+	display: inline-grid;
+	width: fit-content;
+	align-self: flex-start;
+	grid-template-columns: repeat(2, max-content);
+	gap: 40px;
+	padding: 2px 0 0;
+}
+
+.stat-counter {
+	display: flex;
+	min-width: 104px;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+}
+
+.stat-counter span {
+	color: #9a968d;
+	font-size: 14px;
+	font-weight: 700;
+	letter-spacing: 0.22em;
+	line-height: 1;
+	text-transform: uppercase;
+}
+
+.stat-counter strong {
+	color: var(--ink);
+	font-family: var(--font-body);
+	font-size: clamp(18px, 18px, 26px);
+	font-weight: 500;
+	letter-spacing: 0.08em;
+	line-height: 1;
+}
+
+.stat-counter:first-child strong {
+	color: #9b513a;
+}
+
+@media (max-width: 639px) {
+	.stats-lockup {
+		gap: 22px;
+	}
+
+	.stat-counter {
+		min-width: 0;
+	}
+
+	.stat-counter span {
+		font-size: 13px;
+	}
+
+	.stat-counter strong {
+		font-size: 28px;
+	}
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import { readApiJson } from "./components/api-json";
 
 type AuthResponse = {
 	error?: string;
@@ -24,7 +25,7 @@ export default function PasswordGate() {
 				},
 				body: JSON.stringify({ password }),
 			});
-			const data = (await response.json()) as AuthResponse;
+			const data = await readApiJson<AuthResponse>(response, "密码不正确。");
 			if (!response.ok) {
 				throw new Error(data.error ?? "密码不正确。");
 			}
@@ -38,13 +39,14 @@ export default function PasswordGate() {
 	}
 
 	return (
-		<main className="app-shell">
-			<section className="page-shell auth-shell">
-				<form className="panel panel-feature auth-panel" onSubmit={enterSite}>
+		<main className="app-shell min-h-screen">
+			<section className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col items-center justify-center gap-10 px-5 pt-6 pb-16 sm:px-8 min-[960px]:px-10 max-sm:gap-8 max-sm:pt-4">
+				<form className="panel panel-feature flex w-[min(100%,420px)] flex-col gap-5" onSubmit={enterSite}>
 					<h2>访问密码</h2>
-					<label className="field">
+					<label className="field flex flex-col gap-2">
 						<span>密码</span>
 						<input
+							className="h-[42px] w-full"
 							autoComplete="current-password"
 							autoFocus
 							type="password"
@@ -53,7 +55,11 @@ export default function PasswordGate() {
 						/>
 					</label>
 					{error ? <p className="auth-error">{error}</p> : null}
-					<button className="primary-button" disabled={busy} type="submit">
+					<button
+						className="primary-button inline-flex min-h-10 items-center justify-center gap-[9px] rounded-lg px-5 text-sm leading-none font-medium no-underline"
+						disabled={busy}
+						type="submit"
+					>
 						{busy ? "验证中" : "进入网站"}
 					</button>
 				</form>

@@ -1,0 +1,56 @@
+.primary-button,
+.secondary-button,
+.danger-button {
+	transition:
+		background 160ms ease,
+		border-color 160ms ease,
+		color 160ms ease,
+		transform 160ms ease;
+}
+
+.primary-button {
+	border: 1px solid var(--primary);
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.secondary-button {
+	border: 1px solid rgba(250, 249, 245, 0.1);
+	background: var(--surface-dark-elevated);
+	color: var(--on-dark);
+}
+
+.danger-button {
+	border: 1px solid var(--hairline);
+	background: var(--canvas);
+	color: var(--error);
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.danger-button:hover {
+	transform: translateY(-1px);
+}
+
+.primary-button:hover {
+	border-color: var(--primary-active);
+	background: var(--primary-active);
+}
+
+.secondary-button:hover {
+	background: #302d29;
+}
+
+.danger-button:hover {
+	border-color: rgba(198, 69, 69, 0.32);
+	background: #fff6f4;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled,
+.primary-button[aria-disabled="true"] {
+	pointer-events: none;
+	opacity: 0.55;
+	transform: none;
+}

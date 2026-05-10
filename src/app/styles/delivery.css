@@ -1,0 +1,89 @@
+.code-block span {
+	color: var(--muted);
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.4;
+}
+
+.code-block button {
+	overflow-wrap: anywhere;
+	border: 1px solid var(--hairline);
+	border-radius: 8px;
+	background: var(--canvas);
+	padding: 12px;
+	text-align: left;
+	font-family: var(--font-code);
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--body-strong);
+	transition:
+		border-color 160ms ease,
+		background 160ms ease;
+}
+
+.code-block button:hover {
+	border-color: var(--primary);
+	background: var(--surface-soft);
+}
+
+.delivery-box {
+	border-top: 1px solid rgba(250, 249, 245, 0.1);
+	padding-top: 18px;
+}
+
+.delivery-box .panel-copy {
+	margin-top: 4px;
+}
+
+.text-preview span {
+	color: var(--on-dark);
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 1.4;
+}
+
+.text-preview small {
+	color: var(--on-dark-soft);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.text-preview pre {
+	overflow-wrap: anywhere;
+	border: 1px solid rgba(250, 249, 245, 0.12);
+	border-radius: 8px;
+	background: var(--surface-dark-elevated);
+	margin: 0;
+	padding: 14px;
+	color: var(--on-dark);
+	font-family: var(--font-body);
+	font-size: 14px;
+	line-height: 1.55;
+}
+
+.status-pill {
+	background: rgba(93, 184, 114, 0.14);
+	color: #9bd9a9;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.4;
+}
+
+.mini-card {
+	background: var(--surface-dark-elevated);
+	color: var(--on-dark);
+}
+
+.mini-card p {
+	margin: 0;
+	color: var(--muted-soft);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.mini-card strong {
+	color: inherit;
+	font-size: 16px;
+	font-weight: 500;
+	line-height: 1.25;
+}

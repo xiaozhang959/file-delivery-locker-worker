@@ -16,14 +16,25 @@ export async function GET(request: Request) {
 		return json({ error: "Cloudflare bindings are not available." }, 500);
 	}
 
-	const stats = await db
-		.prepare(
-			`SELECT
-				COUNT(*) AS uploadCount,
-				COALESCE(SUM(download_count), 0) AS downloadCount
-			FROM file_deliveries`,
-		)
-		.first<StatsRow>();
+	let stats: StatsRow | null = null;
+	try {
+		stats = await db
+			.prepare(
+				`SELECT
+					COUNT(*) AS uploadCount,
+					COALESCE(SUM(download_count), 0) AS downloadCount
+				FROM file_deliveries`,
+			)
+			.first<StatsRow>();
+	} catch (error) {
+		console.error(
+			JSON.stringify({
+				event: "stats_read_failed",
+				error: error instanceof Error ? error.message : "unknown",
+			}),
+		);
+		return json({ error: "Unable to read site stats." }, 500);
+	}
 
 	return json({
 		uploadCount: Number(stats?.uploadCount ?? 0),

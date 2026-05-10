@@ -1,0 +1,6 @@
+.app-shell {
+	background:
+		linear-gradient(180deg, rgba(250, 249, 245, 0.95), rgba(245, 240, 232, 0.76) 58%, var(--canvas)),
+		var(--canvas);
+	color: var(--ink);
+}
