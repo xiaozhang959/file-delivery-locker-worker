@@ -57,21 +57,23 @@ export function UploadPanel({
 				<span className="badge-coral inline-flex w-fit items-center">{uploadBadge}</span>
 			</div>
 
-			<div className="mode-switch-row inline-flex min-h-11 w-fit items-center justify-center gap-[18px] self-center">
-				<span className={deliveryMode === "file" ? "active" : undefined}>上传文件</span>
-				<button
-					type="button"
-					className="mode-switch inline-flex h-7 w-[54px] items-center p-0"
-					role="switch"
-					aria-checked={deliveryMode === "text"}
-					aria-label="切换寄件类型"
-					onClick={() => onDeliveryModeChange(deliveryMode === "text" ? "file" : "text")}
-				>
-					<span className="switch-track relative block h-7 w-[54px] rounded-full" aria-hidden="true">
-						<span className="switch-thumb absolute top-1 left-1 h-5 w-5 rounded-full" />
-					</span>
-				</button>
-				<span className={deliveryMode === "text" ? "active" : undefined}>寄存文本</span>
+			<div className="w-full">
+				<div className="mode-switch-row inline-flex min-h-11 w-fit items-center justify-center self-center">
+					<span className={deliveryMode === "file" ? "active" : undefined}>上传文件</span>
+					<button
+						type="button"
+						className="mode-switch inline-flex h-7 w-[54px] items-center p-0 mx-2"
+						role="switch"
+						aria-checked={deliveryMode === "text"}
+						aria-label="切换寄件类型"
+						onClick={() => onDeliveryModeChange(deliveryMode === "text" ? "file" : "text")}
+					>
+						<span className="switch-track relative block h-7 w-[54px] rounded-full" aria-hidden="true">
+							<span className="switch-thumb absolute top-1 left-1 h-5 w-5 rounded-full" />
+						</span>
+					</button>
+					<span className={deliveryMode === "text" ? "active" : undefined}>寄存文本</span>
+				</div>
 			</div>
 
 			{deliveryMode === "text" ? (

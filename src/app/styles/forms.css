@@ -30,18 +30,6 @@
 	transition: color 160ms ease;
 }
 
-.mode-switch-row > span {
-	min-width: 72px;
-}
-
-.mode-switch-row > span:first-child {
-	text-align: right;
-}
-
-.mode-switch-row > span:last-child {
-	text-align: left;
-}
-
 .mode-switch-row span.active {
 	color: var(--ink);
 }
