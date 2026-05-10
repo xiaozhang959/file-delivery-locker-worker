@@ -3,6 +3,7 @@ import {
 	MAX_TEXT_SIZE,
 	contentDisposition,
 	createCode,
+	createPickupCode,
 	getCloudflareBindings,
 	getContentType,
 	getSafeFileName,
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
 	const createdAt = Date.now();
 	const expiresAt = createdAt + expiryHours * 60 * 60 * 1000;
 	const objectKey = `deliveries/${createdAt}/${id}`;
-	const pickupCode = createCode(6);
+	const pickupCode = createPickupCode();
 	const manageCode = createCode(16);
 	const contentType = deliveryKind === "text" ? "text/plain;charset=utf-8" : getContentType(request);
 	let pipePromise: Promise<void> | undefined;

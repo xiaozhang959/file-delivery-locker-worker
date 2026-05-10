@@ -194,6 +194,17 @@ export function createCode(byteLength: number) {
 	return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
+export function createPickupCode() {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	let code = "";
+
+	do {
+		code = Array.from({ length: 6 }, () => alphabet[randomIndex(alphabet.length)]).join("");
+	} while (!/[A-Z]/.test(code) || !/[0-9]/.test(code));
+
+	return code;
+}
+
 export async function hashCode(code: string) {
 	return hashText(code.trim().toUpperCase());
 }
@@ -201,6 +212,19 @@ export async function hashCode(code: string) {
 async function hashText(value: string) {
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
 	return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomIndex(max: number) {
+	const bytes = new Uint8Array(1);
+	const limit = Math.floor(256 / max) * max;
+	let value = 0;
+
+	do {
+		crypto.getRandomValues(bytes);
+		value = bytes[0];
+	} while (value >= limit);
+
+	return value % max;
 }
 
 function normalizeSitePassword(value?: string) {

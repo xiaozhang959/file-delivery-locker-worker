@@ -1,6 +1,14 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import {
+	type ClipboardEvent,
+	type FormEvent,
+	type KeyboardEvent,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { GooeyToaster, gooeyToast } from "goey-toast";
 
 type UploadResult = {
@@ -42,6 +50,7 @@ type TextPreview = {
 };
 
 const MAX_TEXT_SIZE = 256 * 1024;
+const PICKUP_CODE_LENGTH = 6;
 const TEXT_FILE_NAME = "寄存文本.txt";
 
 const expiryOptions = [
@@ -78,7 +87,7 @@ export default function Home() {
 		const params = new URLSearchParams(window.location.search);
 		const code = params.get("pickupCode");
 		if (code) {
-			const frame = window.requestAnimationFrame(() => setPickupCode(code.toUpperCase()));
+			const frame = window.requestAnimationFrame(() => setPickupCode(normalizePickupCode(code)));
 			return () => window.cancelAnimationFrame(frame);
 		}
 	}, []);
@@ -184,13 +193,14 @@ export default function Home() {
 
 	async function lookupDelivery(event?: FormEvent<HTMLFormElement>) {
 		event?.preventDefault();
-		const code = pickupCode.trim();
+		const code = normalizePickupCode(pickupCode);
+		setPickupCode(code);
 		setDelivery(null);
 		setTextPreview(null);
 		gooeyToast.dismiss();
 
-		if (!code) {
-			notify("请输入取件码。", "warning");
+		if (code.length !== PICKUP_CODE_LENGTH) {
+			notify("请输入 6 位取件码。", "warning");
 			return;
 		}
 
@@ -358,15 +368,7 @@ export default function Home() {
 								<h2>取件</h2>
 								<p className="panel-copy">输入取件码查看文件状态</p>
 							</div>
-							<label className="field">
-								<span>取件码</span>
-								<input
-									autoCapitalize="characters"
-									value={pickupCode}
-									onChange={(event) => setPickupCode(event.target.value.toUpperCase())}
-									placeholder="例如 A1B2C3D4E5F6"
-								/>
-							</label>
+							<PickupCodeInput value={pickupCode} onChange={setPickupCode} />
 							<button className="secondary-button" disabled={busy === "lookup"} type="submit">
 								<span aria-hidden="true">⌕</span>
 								{busy === "lookup" ? "查询中" : "查询文件"}
@@ -417,11 +419,11 @@ export default function Home() {
 										<a
 											className="primary-button justify-center"
 											aria-disabled={delivery.status !== "available"}
-											href={
-												delivery.status === "available"
-													? `/api/deliveries/${encodeURIComponent(pickupCode.trim())}/download`
-													: undefined
-											}
+												href={
+													delivery.status === "available"
+														? `/api/deliveries/${encodeURIComponent(normalizePickupCode(pickupCode))}/download`
+														: undefined
+												}
 										>
 											<span aria-hidden="true">↓</span>
 											下载文件
@@ -487,6 +489,99 @@ function Mini({ label, value }: { label: string; value: string }) {
 			<strong>{value}</strong>
 		</div>
 	);
+}
+
+function PickupCodeInput({ onChange, value }: { onChange: (value: string) => void; value: string }) {
+	const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+	const chars = Array.from({ length: PICKUP_CODE_LENGTH }, (_, index) => value[index] ?? "");
+
+	function focusBox(index: number) {
+		window.requestAnimationFrame(() => inputRefs.current[index]?.focus());
+	}
+
+	function updateFrom(index: number, rawValue: string) {
+		const nextInput = normalizePickupCode(rawValue);
+		const nextChars = [...chars];
+
+		if (!nextInput) {
+			nextChars[index] = "";
+			onChange(nextChars.join(""));
+			return;
+		}
+
+		for (let offset = 0; offset < nextInput.length && index + offset < PICKUP_CODE_LENGTH; offset += 1) {
+			nextChars[index + offset] = nextInput[offset];
+		}
+
+		onChange(nextChars.join("").slice(0, PICKUP_CODE_LENGTH));
+		focusBox(Math.min(index + nextInput.length, PICKUP_CODE_LENGTH - 1));
+	}
+
+	function handleKeyDown(index: number, event: KeyboardEvent<HTMLInputElement>) {
+		if (event.key === "Backspace" && !chars[index] && index > 0) {
+			event.preventDefault();
+			const nextChars = [...chars];
+			nextChars[index - 1] = "";
+			onChange(nextChars.join(""));
+			focusBox(index - 1);
+			return;
+		}
+
+		if (event.key === "ArrowLeft" && index > 0) {
+			event.preventDefault();
+			focusBox(index - 1);
+			return;
+		}
+
+		if (event.key === "ArrowRight" && index < PICKUP_CODE_LENGTH - 1) {
+			event.preventDefault();
+			focusBox(index + 1);
+		}
+	}
+
+	function handlePaste(index: number, event: ClipboardEvent<HTMLInputElement>) {
+		const pastedCode = normalizePickupCode(event.clipboardData.getData("text"));
+		if (!pastedCode) {
+			return;
+		}
+
+		event.preventDefault();
+		updateFrom(index, pastedCode);
+	}
+
+	return (
+		<div className="field pickup-code-field">
+			<span id="pickup-code-label">取件码</span>
+			<div aria-labelledby="pickup-code-label" className="pickup-code-grid" role="group">
+				{chars.map((char, index) => (
+					<input
+						aria-label={`取件码第 ${index + 1} 位`}
+						autoCapitalize="characters"
+						autoComplete={index === 0 ? "one-time-code" : "off"}
+						inputMode="text"
+						key={index}
+						maxLength={1}
+						pattern="[A-Za-z0-9]"
+						ref={(element) => {
+							inputRefs.current[index] = element;
+						}}
+						type="text"
+						value={char}
+						onChange={(event) => updateFrom(index, event.target.value)}
+						onKeyDown={(event) => handleKeyDown(index, event)}
+						onPaste={(event) => handlePaste(index, event)}
+					/>
+				))}
+			</div>
+		</div>
+	);
+}
+
+function normalizePickupCode(value: string) {
+	return value
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "")
+		.slice(0, PICKUP_CODE_LENGTH);
 }
 
 function formatBytes(value: number) {

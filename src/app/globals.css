@@ -408,6 +408,22 @@ a {
 	box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.15);
 }
 
+.pickup-code-grid {
+	display: grid;
+	grid-template-columns: repeat(6, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.pickup-code-grid input {
+	min-width: 0;
+	padding: 0;
+	text-align: center;
+	font-family: var(--font-code);
+	font-size: 18px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
 .primary-button,
 .secondary-button,
 .danger-button {
