@@ -62,7 +62,7 @@ export default function Home() {
 	const [file, setFile] = useState<File | null>(null);
 	const [textContent, setTextContent] = useState("");
 	const [expiresInHours, setExpiresInHours] = useState(24);
-	const [maxDownloads, setMaxDownloads] = useState(1);
+	const [maxDownloadsInput, setMaxDownloadsInput] = useState("1");
 	const [pickupCode, setPickupCode] = useState("");
 	const [manageCode, setManageCode] = useState("");
 	const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -113,6 +113,12 @@ export default function Home() {
 		let body: BodyInit;
 		let fileName: string;
 		let contentType: string;
+		const maxDownloads = Number(maxDownloadsInput);
+
+		if (!Number.isInteger(maxDownloads) || maxDownloads < 1 || maxDownloads > 10) {
+			notify("下载次数请输入 1 到 10 的整数。", "warning");
+			return;
+		}
 
 		if (deliveryMode === "text") {
 			const textBytes = new TextEncoder().encode(textContent);
@@ -324,9 +330,10 @@ export default function Home() {
 								<input
 									max={10}
 									min={1}
+									step={1}
 									type="number"
-									value={maxDownloads}
-									onChange={(event) => setMaxDownloads(Number(event.target.value))}
+									value={maxDownloadsInput}
+									onChange={(event) => setMaxDownloadsInput(event.target.value)}
 								/>
 							</label>
 						</div>
