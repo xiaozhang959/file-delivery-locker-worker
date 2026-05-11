@@ -17,6 +17,11 @@ import { UploadPanel } from "./components/upload-panel";
 
 const MAX_TEXT_SIZE = 256 * 1024;
 const TEXT_FILE_NAME = "寄存文本.txt";
+const textFilePattern = /\.(txt|md|csv|json|log|xml|yml|yaml)$/i;
+
+function isTextUploadFile(nextFile: File) {
+	return nextFile.type.startsWith("text/") || nextFile.type === "application/json" || textFilePattern.test(nextFile.name);
+}
 
 export default function Home() {
 	const [deliveryMode, setDeliveryMode] = useState<DeliveryKind>("file");
@@ -68,6 +73,39 @@ export default function Home() {
 		}
 
 		gooeyToast(message, options);
+	}
+
+	async function importTextFile(nextFile: File | null) {
+		if (!nextFile) {
+			return;
+		}
+
+		gooeyToast.dismiss();
+		setUploadResult(null);
+		setTextPreview(null);
+
+		if (!isTextUploadFile(nextFile)) {
+			notify("请拖入文本文件。", "warning");
+			return;
+		}
+
+		if (nextFile.size > MAX_TEXT_SIZE) {
+			notify("文本不能超过 256 KB。", "warning");
+			return;
+		}
+
+		try {
+			const nextText = await nextFile.text();
+			if (!nextText.trim()) {
+				notify("文本文件是空的。", "warning");
+				return;
+			}
+
+			setTextContent(nextText);
+			notify("文本文件已载入。", "success");
+		} catch (error) {
+			notify(error instanceof Error ? error.message : "文本文件读取失败。", "error");
+		}
 	}
 
 	async function uploadDelivery(event: FormEvent<HTMLFormElement>) {
@@ -270,6 +308,7 @@ export default function Home() {
 							onMaxDownloadsInputChange={setMaxDownloadsInput}
 							onSubmit={uploadDelivery}
 							onTextContentChange={setTextContent}
+							onTextFileChange={importTextFile}
 						/>
 						<PickupPanel
 							busy={busy === "lookup"}

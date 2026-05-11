@@ -1,6 +1,7 @@
 "use client";
 
-import type { FormEvent } from "react";
+import { useState } from "react";
+import type { DragEvent, FormEvent } from "react";
 import { CodeBlock } from "./code-block";
 import type { DeliveryKind, UploadResult } from "./locker-types";
 
@@ -26,6 +27,7 @@ type UploadPanelProps = {
 	onMaxDownloadsInputChange: (value: string) => void;
 	onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	onTextContentChange: (value: string) => void;
+	onTextFileChange: (file: File | null) => void;
 };
 
 export function UploadPanel({
@@ -44,9 +46,67 @@ export function UploadPanel({
 	onMaxDownloadsInputChange,
 	onSubmit,
 	onTextContentChange,
+	onTextFileChange,
 }: UploadPanelProps) {
+	const [isDragActive, setIsDragActive] = useState(false);
+
+	function hasDroppableData(event: DragEvent<HTMLElement>) {
+		return (
+			event.dataTransfer.types.includes("Files") ||
+			(deliveryMode === "text" && event.dataTransfer.types.includes("text/plain"))
+		);
+	}
+
+	function handlePanelDragOver(event: DragEvent<HTMLFormElement>) {
+		if (!hasDroppableData(event)) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "copy";
+		setIsDragActive(true);
+	}
+
+	function handlePanelDragLeave(event: DragEvent<HTMLFormElement>) {
+		if (event.currentTarget === event.target || !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+			setIsDragActive(false);
+		}
+	}
+
+	function handlePanelDrop(event: DragEvent<HTMLFormElement>) {
+		if (!hasDroppableData(event)) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		setIsDragActive(false);
+
+		const droppedFile = event.dataTransfer.files.item(0);
+		if (droppedFile) {
+			if (deliveryMode === "text") {
+				onTextFileChange(droppedFile);
+				return;
+			}
+
+			onFileChange(droppedFile);
+			return;
+		}
+
+		const droppedText = event.dataTransfer.getData("text/plain");
+		if (deliveryMode === "text" && droppedText) {
+			onTextContentChange(droppedText);
+		}
+	}
+
 	return (
-		<form className="panel panel-feature flex flex-col gap-6" onSubmit={onSubmit}>
+		<form
+			className={`panel panel-feature flex flex-col gap-6 ${isDragActive ? "is-drag-active" : ""}`}
+			onDragLeave={handlePanelDragLeave}
+			onDragOver={handlePanelDragOver}
+			onDrop={handlePanelDrop}
+			onSubmit={onSubmit}
+		>
 			<div className="flex items-center justify-between gap-4">
 				<div>
 					<h2>寄件</h2>
@@ -77,14 +137,29 @@ export function UploadPanel({
 			</div>
 
 			{deliveryMode === "text" ? (
-				<label className="field flex flex-col gap-2">
+				<div className={`text-dropzone field flex flex-col gap-3 ${isDragActive ? "is-drag-active" : ""}`}>
 					<textarea
 						className="min-h-[230px] w-full resize-y"
 						value={textContent}
 						onChange={(event) => onTextContentChange(event.target.value)}
 						placeholder="输入要寄存的纯文本"
 					/>
-				</label>
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<span className="text-dropzone-hint">拖入文本文件</span>
+						<label className="secondary-button inline-flex min-h-9 cursor-pointer items-center justify-center rounded-lg px-4 text-sm font-medium">
+							<input
+								accept=".txt,.md,.csv,.json,.log,.xml,.yml,.yaml,text/*,application/json"
+								className="sr-only"
+								type="file"
+								onChange={(event) => {
+									onTextFileChange(event.target.files?.[0] ?? null);
+									event.currentTarget.value = "";
+								}}
+							/>
+							选择文本文件
+						</label>
+					</div>
+				</div>
 			) : (
 				<label className="dropzone flex min-h-[230px] cursor-pointer flex-col items-center justify-center gap-2.5">
 					<input className="sr-only" type="file" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />

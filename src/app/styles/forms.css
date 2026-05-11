@@ -15,6 +15,36 @@
 	color: var(--primary-active);
 }
 
+.panel-feature.is-drag-active .dropzone {
+	border-color: var(--primary-active);
+	background: var(--surface-soft);
+	color: var(--primary-active);
+}
+
+.text-dropzone {
+	border: 1px dashed transparent;
+	border-radius: 12px;
+	padding: 10px;
+	transition:
+		background 160ms ease,
+		border-color 160ms ease;
+}
+
+.text-dropzone.is-drag-active {
+	border-color: rgba(204, 120, 92, 0.72);
+	background: var(--surface-soft);
+}
+
+.text-dropzone textarea {
+	min-height: 204px;
+}
+
+.text-dropzone-hint {
+	color: var(--muted);
+	font-size: 13px;
+	line-height: 1.4;
+}
+
 .dropzone span:first-of-type {
 	color: var(--primary);
 	font-family: var(--font-display);
