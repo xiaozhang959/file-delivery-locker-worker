@@ -81,7 +81,11 @@ const kindOptions = [
 	{ label: "文本", value: "text" },
 ];
 
-export default function AdminApp() {
+type AdminAppProps = {
+	demoMode?: boolean;
+};
+
+export default function AdminApp({ demoMode = false }: AdminAppProps) {
 	const [deliveries, setDeliveries] = useState<AdminDelivery[]>([]);
 	const [events, setEvents] = useState<DeliveryEvent[]>([]);
 	const [eventDelivery, setEventDelivery] = useState<AdminDelivery | null>(null);
@@ -148,6 +152,11 @@ export default function AdminApp() {
 	}
 
 	function beginEdit(delivery: AdminDelivery) {
+		if (demoMode) {
+			setMessage("演示模式下后台为只读。");
+			return;
+		}
+
 		setActionDelivery(delivery);
 		setEditMaxDownloads(String(delivery.maxDownloads));
 		setEditDownloadCount(String(delivery.downloadCount));
@@ -176,6 +185,11 @@ export default function AdminApp() {
 	}
 
 	async function revokeDelivery(delivery: AdminDelivery) {
+		if (demoMode) {
+			setMessage("演示模式下不能撤回文件。");
+			return;
+		}
+
 		if (delivery.deletedAt) {
 			return;
 		}
@@ -212,6 +226,11 @@ export default function AdminApp() {
 	}
 
 	async function saveCounts(delivery: AdminDelivery) {
+		if (demoMode) {
+			setMessage("演示模式下不能修改下载次数。");
+			return;
+		}
+
 		const maxDownloads = Number(editMaxDownloads);
 		const downloadCount = Number(editDownloadCount);
 
@@ -278,7 +297,7 @@ export default function AdminApp() {
 				<header className="flex flex-wrap items-end justify-between gap-4">
 					<div>
 						<h1 className="m-0 font-[var(--font-display)] text-[34px] font-normal leading-tight text-[var(--ink)]">管理后台</h1>
-						<p className="panel-copy">共 {total} 条上传记录</p>
+						<p className="panel-copy">{demoMode ? "演示模式只读 · " : ""}共 {total} 条上传记录</p>
 					</div>
 					<Link className="secondary-button inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-medium no-underline" href="/">
 						返回前台
@@ -374,8 +393,8 @@ export default function AdminApp() {
 												<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => loadEvents(delivery)}>
 													事件
 												</button>
-												<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => beginEdit(delivery)}>
-													操作
+												<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" disabled={demoMode} type="button" onClick={() => beginEdit(delivery)}>
+													{demoMode ? "只读" : "操作"}
 												</button>
 											</div>
 										</td>
@@ -433,6 +452,7 @@ export default function AdminApp() {
 								<span>最大次数</span>
 								<input
 									className="h-[42px] w-full"
+									disabled={demoMode}
 									min={1}
 									type="number"
 									value={editMaxDownloads}
@@ -443,6 +463,7 @@ export default function AdminApp() {
 								<span>已用次数</span>
 								<input
 									className="h-[42px] w-full"
+									disabled={demoMode}
 									min={0}
 									type="number"
 									value={editDownloadCount}
@@ -458,7 +479,7 @@ export default function AdminApp() {
 						<div className="flex flex-wrap justify-between gap-3 border-t border-[var(--hairline)] pt-4">
 							<button
 								className="danger-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium"
-								disabled={actionDelivery.deletedAt !== null || busy === "revoke"}
+								disabled={demoMode || actionDelivery.deletedAt !== null || busy === "revoke"}
 								type="button"
 								onClick={() => revokeDelivery(actionDelivery)}
 							>
@@ -470,7 +491,7 @@ export default function AdminApp() {
 								</button>
 								<button
 									className="primary-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium"
-									disabled={busy === "counts"}
+									disabled={demoMode || busy === "counts"}
 									type="button"
 									onClick={() => saveCounts(actionDelivery)}
 								>

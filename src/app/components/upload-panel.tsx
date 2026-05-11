@@ -13,6 +13,7 @@ const expiryOptions = [
 
 type UploadPanelProps = {
 	busy: boolean;
+	demoMode: boolean;
 	deliveryMode: DeliveryKind;
 	expiresInHours: number;
 	maxDownloadsInput: string;
@@ -32,6 +33,7 @@ type UploadPanelProps = {
 
 export function UploadPanel({
 	busy,
+	demoMode,
 	deliveryMode,
 	expiresInHours,
 	maxDownloadsInput,
@@ -51,6 +53,10 @@ export function UploadPanel({
 	const [isDragActive, setIsDragActive] = useState(false);
 
 	function hasDroppableData(event: DragEvent<HTMLElement>) {
+		if (demoMode) {
+			return false;
+		}
+
 		return (
 			event.dataTransfer.types.includes("Files") ||
 			(deliveryMode === "text" && event.dataTransfer.types.includes("text/plain"))
@@ -111,7 +117,11 @@ export function UploadPanel({
 				<div>
 					<h2>寄件</h2>
 					<p className="panel-copy">
-						{deliveryMode === "text" ? "输入一段文本放入快递柜" : selectedFileName ?? "选择一个文件放入快递柜"}
+						{demoMode
+							? "演示模式下只能查看和取件，不能放入新内容"
+							: deliveryMode === "text"
+								? "输入一段文本放入快递柜"
+								: selectedFileName ?? "选择一个文件放入快递柜"}
 					</p>
 				</div>
 				<span className="badge-coral inline-flex w-fit items-center">{uploadBadge}</span>
@@ -126,6 +136,7 @@ export function UploadPanel({
 						role="switch"
 						aria-checked={deliveryMode === "text"}
 						aria-label="切换寄件类型"
+						disabled={demoMode}
 						onClick={() => onDeliveryModeChange(deliveryMode === "text" ? "file" : "text")}
 					>
 						<span className="switch-track relative block h-7 w-[54px] rounded-full" aria-hidden="true">
@@ -140,6 +151,7 @@ export function UploadPanel({
 				<div className={`text-dropzone field flex flex-col gap-3 ${isDragActive ? "is-drag-active" : ""}`}>
 					<textarea
 						className="min-h-[230px] w-full resize-y"
+						disabled={demoMode}
 						value={textContent}
 						onChange={(event) => onTextContentChange(event.target.value)}
 						placeholder="输入要寄存的纯文本"
@@ -150,6 +162,7 @@ export function UploadPanel({
 							<input
 								accept=".txt,.md,.csv,.json,.log,.xml,.yml,.yaml,text/*,application/json"
 								className="sr-only"
+								disabled={demoMode}
 								type="file"
 								onChange={(event) => {
 									onTextFileChange(event.target.files?.[0] ?? null);
@@ -161,10 +174,15 @@ export function UploadPanel({
 					</div>
 				</div>
 			) : (
-				<label className="dropzone flex min-h-[230px] cursor-pointer flex-col items-center justify-center gap-2.5">
-					<input className="sr-only" type="file" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
+				<label className={`dropzone flex min-h-[230px] flex-col items-center justify-center gap-2.5 ${demoMode ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}>
+					<input
+						className="sr-only"
+						disabled={demoMode}
+						type="file"
+						onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+					/>
 					<span className="text-4xl">+</span>
-					<span className="font-medium">选择文件</span>
+					<span className="font-medium">{demoMode ? "演示模式不可上传" : "选择文件"}</span>
 				</label>
 			)}
 
@@ -173,6 +191,7 @@ export function UploadPanel({
 					<span>保存期限</span>
 					<select
 						className="h-[42px] w-full"
+						disabled={demoMode}
 						value={expiresInHours}
 						onChange={(event) => onExpiresInHoursChange(Number(event.target.value))}
 					>
@@ -187,6 +206,7 @@ export function UploadPanel({
 					<span>下载次数</span>
 					<input
 						className="h-[42px] w-full"
+						disabled={demoMode}
 						max={10}
 						min={1}
 						step={1}
@@ -199,11 +219,11 @@ export function UploadPanel({
 
 			<button
 				className="primary-button inline-flex min-h-10 items-center justify-center gap-[9px] rounded-lg px-5 text-sm leading-none font-medium no-underline"
-				disabled={busy}
+				disabled={busy || demoMode}
 				type="submit"
 			>
 				<span aria-hidden="true">↑</span>
-				{busy ? "上传中" : "放入快递柜"}
+				{demoMode ? "演示模式只读" : busy ? "上传中" : "放入快递柜"}
 			</button>
 
 			{uploadResult && (

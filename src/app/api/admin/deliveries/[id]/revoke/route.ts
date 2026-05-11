@@ -5,9 +5,15 @@ import {
 	json,
 	recordDeliveryEvent,
 	requireAdminAuth,
+	requireWritableMode,
 } from "@/lib/locker";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+	const readonly = await requireWritableMode();
+	if (readonly) {
+		return readonly;
+	}
+
 	const unauthorized = await requireAdminAuth(request);
 	if (unauthorized) {
 		return unauthorized;

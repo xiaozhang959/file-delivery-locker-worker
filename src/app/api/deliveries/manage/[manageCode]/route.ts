@@ -1,6 +1,11 @@
-import { type DeliveryRow, getCloudflareBindings, hashCode, json, requireSiteAuth } from "@/lib/locker";
+import { type DeliveryRow, getCloudflareBindings, hashCode, json, requireSiteAuth, requireWritableMode } from "@/lib/locker";
 
 export async function DELETE(request: Request, context: { params: Promise<{ manageCode: string }> }) {
+	const readonly = await requireWritableMode();
+	if (readonly) {
+		return readonly;
+	}
+
 	const unauthorized = await requireSiteAuth(request);
 	if (unauthorized) {
 		return unauthorized;

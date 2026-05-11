@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ADMIN_AUTH_COOKIE, getAdminPassword, isAdminAuthTokenValid } from "@/lib/locker";
+import { ADMIN_AUTH_COOKIE, getAdminPassword, getDemoMode, isAdminAuthTokenValid } from "@/lib/locker";
 import AdminApp from "./admin-app";
 import AdminLogin from "./admin-login";
 
@@ -10,6 +10,11 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+	const demoMode = await getDemoMode();
+	if (demoMode) {
+		return <AdminApp demoMode={demoMode} />;
+	}
+
 	const adminPassword = await getAdminPassword();
 	if (!adminPassword) {
 		return (
@@ -32,5 +37,5 @@ export default async function AdminPage() {
 		return <AdminLogin />;
 	}
 
-	return <AdminApp />;
+	return <AdminApp demoMode={demoMode} />;
 }

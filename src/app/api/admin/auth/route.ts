@@ -1,6 +1,10 @@
-import { createAdminAuthToken, getAdminPassword, json, serializeAdminAuthCookie } from "@/lib/locker";
+import { createAdminAuthToken, getAdminPassword, getDemoMode, json, serializeAdminAuthCookie } from "@/lib/locker";
 
 export async function POST(request: Request) {
+	if (await getDemoMode()) {
+		return json({ ok: true, demoMode: true });
+	}
+
 	const adminPassword = await getAdminPassword();
 	if (!adminPassword) {
 		return json({ error: "后台密码未配置。" }, 503);

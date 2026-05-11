@@ -5,6 +5,7 @@ import {
 	json,
 	recordDeliveryEvent,
 	requireAdminAuth,
+	requireWritableMode,
 } from "@/lib/locker";
 
 type CountsBody = {
@@ -13,6 +14,11 @@ type CountsBody = {
 };
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+	const readonly = await requireWritableMode();
+	if (readonly) {
+		return readonly;
+	}
+
 	const unauthorized = await requireAdminAuth(request);
 	if (unauthorized) {
 		return unauthorized;

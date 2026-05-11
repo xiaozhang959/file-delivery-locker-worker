@@ -1,6 +1,10 @@
-import { createSiteAuthToken, getSitePassword, json, serializeSiteAuthCookie } from "@/lib/locker";
+import { createSiteAuthToken, getDemoMode, getSitePassword, json, serializeSiteAuthCookie } from "@/lib/locker";
 
 export async function POST(request: Request) {
+	if (await getDemoMode()) {
+		return json({ locked: false, demoMode: true });
+	}
+
 	const sitePassword = await getSitePassword();
 	if (!sitePassword) {
 		return json({ locked: false });

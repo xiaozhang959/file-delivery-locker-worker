@@ -16,7 +16,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 		return unauthorized;
 	}
 
-	const { db, bucket, ctx } = await getCloudflareBindings();
+	const { db, bucket, ctx, demoMode } = await getCloudflareBindings();
 	if (!db || !bucket) {
 		return json({ error: "Cloudflare bindings are not available." }, 500);
 	}
@@ -54,7 +54,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	const source = getRequestSource(request);
 	const unavailable = isUnavailable(row, now);
 	if (unavailable) {
-		if (unavailable === "expired" && row.deleted_at === null) {
+		if (!demoMode && unavailable === "expired" && row.deleted_at === null) {
 			ctx.waitUntil(markDeleted(db, bucket, row, now, "expired"));
 		}
 
@@ -63,8 +63,22 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 
 	const object = await bucket.get(row.object_key);
 	if (!object) {
-		ctx.waitUntil(markDeleted(db, bucket, row, now, "missing_object"));
+		if (!demoMode) {
+			ctx.waitUntil(markDeleted(db, bucket, row, now, "missing_object"));
+		}
 		return json({ error: "Stored file is missing." }, 404);
+	}
+
+	if (demoMode) {
+		return new Response(object.body, {
+			headers: {
+				"cache-control": "no-store",
+				"content-disposition": contentDisposition(row.file_name),
+				"content-length": String(object.size),
+				"content-type": object.httpMetadata?.contentType ?? row.content_type,
+				etag: object.httpEtag,
+			},
+		});
 	}
 
 	const reachedLimit = row.download_count + 1 >= row.max_downloads;

@@ -23,7 +23,11 @@ function isTextUploadFile(nextFile: File) {
 	return nextFile.type.startsWith("text/") || nextFile.type === "application/json" || textFilePattern.test(nextFile.name);
 }
 
-export default function Home() {
+type LockerAppProps = {
+	demoMode?: boolean;
+};
+
+export default function LockerApp({ demoMode = false }: LockerAppProps) {
 	const [deliveryMode, setDeliveryMode] = useState<DeliveryKind>("file");
 	const [file, setFile] = useState<File | null>(null);
 	const [textContent, setTextContent] = useState("");
@@ -80,6 +84,11 @@ export default function Home() {
 			return;
 		}
 
+		if (demoMode) {
+			notify("演示模式下不能寄存文本。", "warning");
+			return;
+		}
+
 		gooeyToast.dismiss();
 		setUploadResult(null);
 		setTextPreview(null);
@@ -113,6 +122,11 @@ export default function Home() {
 		gooeyToast.dismiss();
 		setUploadResult(null);
 		setTextPreview(null);
+
+		if (demoMode) {
+			notify("演示模式下不能上传或寄存内容。", "warning");
+			return;
+		}
 
 		let body: BodyInit;
 		let fileName: string;
@@ -294,6 +308,7 @@ export default function Home() {
 					<div className="grid gap-6 min-[960px]:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)] min-[960px]:items-start">
 						<UploadPanel
 							busy={busy === "upload"}
+							demoMode={demoMode}
 							deliveryMode={deliveryMode}
 							expiresInHours={expiresInHours}
 							maxDownloadsInput={maxDownloadsInput}

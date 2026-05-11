@@ -14,6 +14,7 @@ export const ADMIN_AUTH_MAX_AGE = 60 * 60 * 8;
 type SiteEnv = CloudflareEnv & {
 	SITE_PASSWORD?: string;
 	ADMIN_PASSWORD?: string;
+	DEMO_MODE?: string;
 };
 
 export type DeliveryKind = "file" | "text";
@@ -90,6 +91,7 @@ export async function getCloudflareBindings() {
 		db: env.DB,
 		bucket: env.FILE_BUCKET,
 		sitePassword: normalizeSitePassword(siteEnv.SITE_PASSWORD),
+		demoMode: isDemoModeEnabled(siteEnv.DEMO_MODE),
 		ctx,
 	};
 }
@@ -102,6 +104,16 @@ export async function getSitePassword() {
 export async function getAdminPassword() {
 	const { env } = await getCloudflareContext({ async: true });
 	return normalizeSitePassword((env as SiteEnv).ADMIN_PASSWORD);
+}
+
+export async function getDemoMode() {
+	const { env } = await getCloudflareContext({ async: true });
+	return isDemoModeEnabled((env as SiteEnv).DEMO_MODE);
+}
+
+export function isDemoModeEnabled(value?: string | null) {
+	const normalized = value?.trim().toLowerCase();
+	return normalized === "true" || normalized === "1" || normalized === "on" || normalized === "yes" || normalized === "enabled";
 }
 
 export function isSiteLockEnabled(sitePassword: string | null) {
@@ -129,11 +141,19 @@ export async function isAdminAuthTokenValid(adminPassword: string | null, token?
 }
 
 export async function isSiteRequestAuthorized(request: Request) {
+	if (await getDemoMode()) {
+		return true;
+	}
+
 	const sitePassword = await getSitePassword();
 	return isSiteAuthTokenValid(sitePassword, getCookieValue(request.headers.get("cookie"), SITE_AUTH_COOKIE));
 }
 
 export async function isAdminRequestAuthorized(request: Request) {
+	if (await getDemoMode()) {
+		return true;
+	}
+
 	const adminPassword = await getAdminPassword();
 	return isAdminAuthTokenValid(adminPassword, getCookieValue(request.headers.get("cookie"), ADMIN_AUTH_COOKIE));
 }
@@ -147,6 +167,10 @@ export async function requireSiteAuth(request: Request) {
 }
 
 export async function requireAdminAuth(request: Request) {
+	if (await getDemoMode()) {
+		return null;
+	}
+
 	const adminPassword = await getAdminPassword();
 	if (!adminPassword) {
 		return json({ error: "Admin password is not configured." }, 503);
@@ -157,6 +181,14 @@ export async function requireAdminAuth(request: Request) {
 	}
 
 	return json({ error: "Admin password is required." }, 401);
+}
+
+export async function requireWritableMode() {
+	if (await getDemoMode()) {
+		return json({ error: "Demo mode is read-only." }, 403);
+	}
+
+	return null;
 }
 
 export async function createSiteAuthToken(sitePassword: string) {

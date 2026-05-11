@@ -15,10 +15,16 @@ import {
 	parseExpiryHours,
 	parseMaxDownloads,
 	recordDeliveryEvent,
+	requireWritableMode,
 	requireSiteAuth,
 } from "@/lib/locker";
 
 export async function POST(request: Request) {
+	const readonly = await requireWritableMode();
+	if (readonly) {
+		return readonly;
+	}
+
 	const unauthorized = await requireSiteAuth(request);
 	if (unauthorized) {
 		return unauthorized;
