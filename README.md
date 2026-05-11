@@ -12,6 +12,7 @@
 - 取件码和管理码只保存 SHA-256 哈希，不明文入库。
 - 文件下载到期、次数用尽或主动撤回后，会标记记录并删除 R2 对象。
 - 大文件上传和下载走流式处理，避免把整份文件读入 Worker 内存。
+- 独立管理后台 `/admin` 可查看所有上传记录、上传/下载来源事件，并手动撤回或修改下载次数。
 
 ## 技术栈
 
@@ -32,6 +33,8 @@ src/app/api/deliveries/route.ts                  创建文件投递
 src/app/api/deliveries/[pickupCode]/route.ts     查询投递状态
 src/app/api/deliveries/[pickupCode]/download/route.ts  下载文件
 src/app/api/deliveries/manage/[manageCode]/route.ts    撤回文件
+src/app/admin/page.tsx                            管理后台入口
+src/app/api/admin/deliveries/route.ts             后台上传记录列表
 src/lib/locker.ts                                通用校验、序列化、哈希和 Cloudflare 绑定
 migrations/0001_file_deliveries.sql              D1 表结构
 wrangler.example.jsonc                           Cloudflare 配置模板
@@ -64,6 +67,7 @@ cp wrangler.example.jsonc wrangler.jsonc
 - `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，不要改成 bucket 名称。
 - `d1_databases[0].binding`：保持为 `DB`，不要改成数据库名称。
 - `vars.SITE_PASSWORD`：站点访问密码。留空时关闭密码门禁。
+- `vars.ADMIN_PASSWORD`：管理后台密码。留空时禁用 `/admin` 后台。
 
 创建 R2 bucket 和 D1 数据库：
 
@@ -84,11 +88,12 @@ bunx wrangler d1 create file-delivery-locker
 
 ```jsonc
 "vars": {
-  "SITE_PASSWORD": "your-password"
+  "SITE_PASSWORD": "your-password",
+  "ADMIN_PASSWORD": "your-admin-password"
 }
 ```
 
-也可以部署后在 Cloudflare 仪表盘的 Worker Variables 中编辑 `SITE_PASSWORD`。变量不存在或为空字符串时，首页和 API 都不需要密码；有值时，需要先在首页输入密码。
+也可以部署后在 Cloudflare 仪表盘的 Worker Variables 中编辑 `SITE_PASSWORD` 和 `ADMIN_PASSWORD`。`SITE_PASSWORD` 不存在或为空字符串时，首页和普通 API 不需要密码；`ADMIN_PASSWORD` 不存在或为空字符串时，管理后台不可用。
 
 ## 初始化数据库
 
@@ -165,6 +170,15 @@ bun run upload
 1. 在“管理”区域输入管理码。
 2. 点击“撤回文件”。
 3. 系统会标记记录为已撤回，并删除对应 R2 对象。
+
+管理后台：
+
+1. 配置 `ADMIN_PASSWORD` 并打开 `/admin`。
+2. 输入后台密码进入上传记录列表。
+3. 可按状态、类型或关键词过滤记录，查看上传和下载事件。
+4. 可对单条记录执行后台撤回，或同时修改最大下载次数和已用下载次数。
+
+后台只显示取件记录和事件来源，不会显示取件码或管理码明文。
 
 ## API 使用
 
@@ -244,10 +258,12 @@ curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
 
 - `wrangler.example.jsonc` 已包含 `compatibility_date`、`nodejs_compat`、静态资源绑定、R2、D1 和 observability 配置；新建环境时优先从它复制。
 - `SITE_PASSWORD` 按普通 Worker variable 管理，方便在 Cloudflare 仪表盘修改；留空即关闭站点密码门禁。
+- `ADMIN_PASSWORD` 独立控制 `/admin` 管理后台；留空即禁用后台，避免误开放。
 - 保持 R2、D1 通过 Worker 绑定访问，不要在 Worker 内部绕到 Cloudflare REST API。
 - 大文件处理保持流式读取和流式响应，不要改成 `arrayBuffer()` 或 `text()` 读取整文件。
 - 后台清理、过期删除等响应后工作应继续使用 `ctx.waitUntil()`。
 - 取件码、管理码需要继续使用 Web Crypto 生成和哈希，不要改用 `Math.random()`。
+- 上传来源和下载事件会保存 IP、User-Agent 及轻量解析出的浏览器、系统、设备信息；如需上线前告知用户，请同步更新站点隐私说明。
 - 更新 Cloudflare 配置后运行类型生成：
 
 ```bash

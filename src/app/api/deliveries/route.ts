@@ -6,6 +6,7 @@ import {
 	createPickupCode,
 	getCloudflareBindings,
 	getContentType,
+	getRequestSource,
 	getSafeFileName,
 	hashCode,
 	json,
@@ -13,6 +14,7 @@ import {
 	parseContentLength,
 	parseExpiryHours,
 	parseMaxDownloads,
+	recordDeliveryEvent,
 	requireSiteAuth,
 } from "@/lib/locker";
 
@@ -72,6 +74,7 @@ export async function POST(request: Request) {
 	const pickupCode = createPickupCode();
 	const manageCode = createCode(16);
 	const contentType = deliveryKind === "text" ? "text/plain;charset=utf-8" : getContentType(request);
+	const source = getRequestSource(request);
 	let pipePromise: Promise<void> | undefined;
 
 	try {
@@ -104,8 +107,16 @@ export async function POST(request: Request) {
 					max_downloads,
 					download_count,
 					expires_at,
-					created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+					created_at,
+					upload_ip,
+					upload_user_agent,
+					upload_browser,
+					upload_os,
+					upload_device,
+					upload_country,
+					upload_region,
+					upload_city
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.bind(
 				id,
@@ -119,8 +130,25 @@ export async function POST(request: Request) {
 				maxDownloads,
 				expiresAt,
 				createdAt,
+				source.ip,
+				source.userAgent,
+				source.browser,
+				source.os,
+				source.device,
+				source.country,
+				source.region,
+				source.city,
 			)
 			.run();
+		await recordDeliveryEvent(db, {
+			deliveryId: id,
+			action: "upload",
+			actor: "user",
+			source,
+			nextMaxDownloads: maxDownloads,
+			nextDownloadCount: 0,
+			createdAt,
+		});
 	} catch (error) {
 		await pipePromise?.catch(() => undefined);
 		await bucket.delete(objectKey).catch(() => undefined);

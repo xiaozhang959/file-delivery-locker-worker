@@ -37,7 +37,8 @@
 	},
 	"upload_source_maps": true,
 	"vars": {
-		"SITE_PASSWORD": ""
+		"SITE_PASSWORD": "",
+		"ADMIN_PASSWORD": ""
 	},
 	"r2_buckets": [
 		{

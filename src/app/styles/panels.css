@@ -61,6 +61,88 @@
 	line-height: 1.5;
 }
 
+.admin-table th {
+	border-bottom: 1px solid var(--hairline);
+	color: var(--muted);
+	font-size: 12px;
+	font-weight: 600;
+	padding: 0 12px 12px 0;
+	white-space: nowrap;
+}
+
+.admin-table td {
+	border-bottom: 1px solid var(--hairline-soft);
+	color: var(--body);
+	padding: 14px 12px 14px 0;
+	vertical-align: top;
+}
+
+.admin-table td strong,
+.admin-table td span {
+	display: block;
+	max-width: 220px;
+	overflow-wrap: anywhere;
+}
+
+.admin-table td strong {
+	color: var(--ink);
+	font-weight: 600;
+}
+
+.admin-table td span {
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 1.45;
+	margin-top: 4px;
+}
+
+.admin-status {
+	border-radius: 9999px;
+	display: inline-flex !important;
+	font-size: 12px !important;
+	font-weight: 600;
+	line-height: 1;
+	margin: 0 0 6px !important;
+	padding: 6px 9px;
+	width: fit-content;
+}
+
+.admin-status-available {
+	background: rgba(93, 184, 114, 0.16);
+	color: #2f7742 !important;
+}
+
+.admin-status-expired,
+.admin-status-depleted {
+	background: rgba(232, 165, 90, 0.18);
+	color: #8f5b1e !important;
+}
+
+.admin-status-deleted {
+	background: rgba(198, 69, 69, 0.14);
+	color: var(--error) !important;
+}
+
+.admin-event {
+	border: 1px solid rgba(250, 249, 245, 0.12);
+	border-radius: 8px;
+	padding: 12px;
+}
+
+.admin-event strong {
+	color: var(--on-dark);
+	font-size: 14px;
+}
+
+.admin-event span,
+.admin-event p {
+	color: var(--on-dark-soft);
+	font-size: 12px;
+	line-height: 1.5;
+	margin: 6px 0 0;
+	overflow-wrap: anywhere;
+}
+
 @media (max-width: 639px) {
 	.panel {
 		padding: 24px;

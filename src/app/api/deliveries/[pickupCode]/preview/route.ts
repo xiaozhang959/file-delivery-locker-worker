@@ -2,9 +2,11 @@ import {
 	MAX_TEXT_SIZE,
 	type DeliveryRow,
 	getCloudflareBindings,
+	getRequestSource,
 	hashCode,
 	isUnavailable,
 	json,
+	recordDeliveryEvent,
 	requireSiteAuth,
 } from "@/lib/locker";
 
@@ -57,6 +59,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	}
 
 	const now = Date.now();
+	const source = getRequestSource(request);
 	const unavailable = isUnavailable(row, now);
 	if (unavailable) {
 		if (unavailable === "expired" && row.deleted_at === null) {
@@ -96,6 +99,26 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	if (reachedLimit) {
 		ctx.waitUntil(bucket.delete(row.object_key));
 	}
+	ctx.waitUntil(
+		recordDeliveryEvent(db, {
+			deliveryId: row.id,
+			action: "download",
+			actor: "user",
+			source,
+			note: "text_preview",
+			nextMaxDownloads: row.max_downloads,
+			nextDownloadCount: row.download_count + 1,
+			createdAt: now,
+		}).catch((error) => {
+			console.error(
+				JSON.stringify({
+					event: "delivery_preview_event_failed",
+					id: row.id,
+					error: error instanceof Error ? error.message : "unknown",
+				}),
+			);
+		}),
+	);
 
 	return json({
 		text,
