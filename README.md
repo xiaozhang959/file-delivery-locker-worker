@@ -68,6 +68,7 @@ cp wrangler.example.jsonc wrangler.jsonc
 - `d1_databases[0].binding`：保持为 `DB`，不要改成数据库名称。
 - `vars.SITE_PASSWORD`：站点访问密码。留空时关闭密码门禁。
 - `vars.ADMIN_PASSWORD`：管理后台密码。留空时禁用 `/admin` 后台。
+- `vars.DEMO_MODE`：演示模式开关。设为 `true`、`1`、`on`、`yes` 或 `enabled` 时启用只读演示。
 
 创建 R2 bucket 和 D1 数据库：
 
@@ -89,11 +90,14 @@ bunx wrangler d1 create file-delivery-locker
 ```jsonc
 "vars": {
   "SITE_PASSWORD": "your-password",
-  "ADMIN_PASSWORD": "your-admin-password"
+  "ADMIN_PASSWORD": "your-admin-password",
+  "DEMO_MODE": "false"
 }
 ```
 
-也可以部署后在 Cloudflare 仪表盘的 Worker Variables 中编辑 `SITE_PASSWORD` 和 `ADMIN_PASSWORD`。`SITE_PASSWORD` 不存在或为空字符串时，首页和普通 API 不需要密码；`ADMIN_PASSWORD` 不存在或为空字符串时，管理后台不可用。
+也可以部署后在 Cloudflare 仪表盘的 Worker Variables 中编辑 `SITE_PASSWORD`、`ADMIN_PASSWORD` 和 `DEMO_MODE`。`SITE_PASSWORD` 不存在或为空字符串时，首页和普通 API 不需要密码；`ADMIN_PASSWORD` 不存在或为空字符串时，管理后台不可用。
+
+启用 `DEMO_MODE` 后，首页和 `/admin` 都不再要求密码，且后台即使未配置 `ADMIN_PASSWORD` 也可进入。演示模式是只读的：不能上传文件、不能寄存文本、不能用管理码撤回文件，也不能在后台撤回或修改下载次数。取件、下载、文本预览、统计、后台列表和事件查看仍可使用；下载和文本预览不会消耗下载次数、写入事件或删除 R2 对象。
 
 ## 初始化数据库
 
@@ -150,6 +154,8 @@ bun run upload
 ## 页面使用
 
 如果设置了 `SITE_PASSWORD`，打开首页后先输入站点访问密码。验证通过后浏览器会保存一个 7 天有效的登录 Cookie；修改 `SITE_PASSWORD` 后需要重新输入新密码。
+
+如果启用了 `DEMO_MODE`，首页和管理后台会直接进入只读演示状态，无需输入站点密码或后台密码。
 
 寄件：
 
@@ -259,6 +265,7 @@ curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
 - `wrangler.example.jsonc` 已包含 `compatibility_date`、`nodejs_compat`、静态资源绑定、R2、D1 和 observability 配置；新建环境时优先从它复制。
 - `SITE_PASSWORD` 按普通 Worker variable 管理，方便在 Cloudflare 仪表盘修改；留空即关闭站点密码门禁。
 - `ADMIN_PASSWORD` 独立控制 `/admin` 管理后台；留空即禁用后台，避免误开放。
+- `DEMO_MODE` 会公开前台和后台页面，请只在演示环境启用；启用后写操作会返回 `403`。
 - 保持 R2、D1 通过 Worker 绑定访问，不要在 Worker 内部绕到 Cloudflare REST API。
 - 大文件处理保持流式读取和流式响应，不要改成 `arrayBuffer()` 或 `text()` 读取整文件。
 - 后台清理、过期删除等响应后工作应继续使用 `ctx.waitUntil()`。
