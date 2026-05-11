@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { readApiJson } from "../components/api-json";
 import { formatBytes } from "../components/locker-format";
 
@@ -84,7 +84,8 @@ const kindOptions = [
 export default function AdminApp() {
 	const [deliveries, setDeliveries] = useState<AdminDelivery[]>([]);
 	const [events, setEvents] = useState<DeliveryEvent[]>([]);
-	const [selectedDelivery, setSelectedDelivery] = useState<AdminDelivery | null>(null);
+	const [eventDelivery, setEventDelivery] = useState<AdminDelivery | null>(null);
+	const [actionDelivery, setActionDelivery] = useState<AdminDelivery | null>(null);
 	const [page, setPage] = useState(1);
 	const [totalPages, setTotalPages] = useState(1);
 	const [total, setTotal] = useState(0);
@@ -94,11 +95,8 @@ export default function AdminApp() {
 	const [query, setQuery] = useState("");
 	const [busy, setBusy] = useState<"list" | "events" | "revoke" | "counts" | null>(null);
 	const [message, setMessage] = useState("");
-	const [editingId, setEditingId] = useState<string | null>(null);
 	const [editMaxDownloads, setEditMaxDownloads] = useState("");
 	const [editDownloadCount, setEditDownloadCount] = useState("");
-
-	const selectedTitle = useMemo(() => selectedDelivery?.fileName ?? "选择一条记录查看事件", [selectedDelivery]);
 
 	const loadDeliveries = useCallback(async () => {
 		setBusy("list");
@@ -150,7 +148,7 @@ export default function AdminApp() {
 	}
 
 	function beginEdit(delivery: AdminDelivery) {
-		setEditingId(delivery.id);
+		setActionDelivery(delivery);
 		setEditMaxDownloads(String(delivery.maxDownloads));
 		setEditDownloadCount(String(delivery.downloadCount));
 	}
@@ -158,7 +156,8 @@ export default function AdminApp() {
 	async function loadEvents(delivery: AdminDelivery) {
 		setBusy("events");
 		setMessage("");
-		setSelectedDelivery(delivery);
+		setEvents([]);
+		setEventDelivery(delivery);
 
 		try {
 			const response = await fetch(`/api/admin/deliveries/${encodeURIComponent(delivery.id)}/events`);
@@ -177,7 +176,7 @@ export default function AdminApp() {
 	}
 
 	async function revokeDelivery(delivery: AdminDelivery) {
-		if (delivery.deletedAt || !window.confirm(`确认撤回「${delivery.fileName}」？`)) {
+		if (delivery.deletedAt) {
 			return;
 		}
 
@@ -194,10 +193,17 @@ export default function AdminApp() {
 			}
 
 			setMessage("文件已撤回。");
+			setActionDelivery((current) =>
+				current?.id === delivery.id
+					? {
+							...current,
+							deletedAt: new Date().toISOString(),
+							deletedReason: "admin_revoked",
+							status: "deleted",
+						}
+					: current,
+			);
 			await loadDeliveries();
-			if (selectedDelivery?.id === delivery.id) {
-				await loadEvents(delivery);
-			}
 		} catch (error) {
 			setMessage(error instanceof Error ? error.message : "撤回失败。");
 		} finally {
@@ -235,12 +241,30 @@ export default function AdminApp() {
 				throw new Error(data.error ?? "次数修改失败。");
 			}
 
-			setEditingId(null);
+			setActionDelivery((current) =>
+				current?.id === delivery.id
+					? {
+							...current,
+							maxDownloads,
+							downloadCount,
+							remainingDownloads: Math.max(0, maxDownloads - downloadCount),
+							status:
+								current.deletedAt === null && current.status === "available" && downloadCount >= maxDownloads
+									? "deleted"
+									: current.status,
+							deletedAt:
+								current.deletedAt === null && current.status === "available" && downloadCount >= maxDownloads
+									? new Date().toISOString()
+									: current.deletedAt,
+							deletedReason:
+								current.deletedAt === null && current.status === "available" && downloadCount >= maxDownloads
+									? "admin_count_limit"
+									: current.deletedReason,
+						}
+					: current,
+			);
 			setMessage("次数已更新。");
 			await loadDeliveries();
-			if (selectedDelivery?.id === delivery.id) {
-				await loadEvents(delivery);
-			}
 		} catch (error) {
 			setMessage(error instanceof Error ? error.message : "次数修改失败。");
 		} finally {
@@ -312,140 +336,199 @@ export default function AdminApp() {
 
 				{message ? <p className="auth-error">{message}</p> : null}
 
-				<div className="grid gap-6 min-[1120px]:grid-cols-[minmax(0,1fr)_380px] min-[1120px]:items-start">
-					<section className="panel flex min-w-0 flex-col gap-4 overflow-hidden">
-						<div className="overflow-x-auto">
-							<table className="admin-table w-full min-w-[1120px] border-collapse text-left text-sm">
-								<thead>
-									<tr>
-										<th>文件</th>
-										<th>状态</th>
-										<th>大小</th>
-										<th>次数</th>
-										<th>创建时间</th>
-										<th>过期时间</th>
-										<th>上传来源</th>
-										<th>浏览器</th>
-										<th>操作</th>
+				<section className="panel flex min-w-0 flex-col gap-4 overflow-hidden">
+					<div className="overflow-x-auto">
+						<table className="admin-table w-full min-w-[1060px] border-collapse text-left text-sm">
+							<thead>
+								<tr>
+									<th>文件</th>
+									<th>状态</th>
+									<th>大小</th>
+									<th>次数</th>
+									<th>创建时间</th>
+									<th>过期时间</th>
+									<th>上传来源</th>
+									<th>浏览器</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody>
+								{deliveries.map((delivery) => (
+									<tr key={delivery.id}>
+										<td>
+											<strong>{delivery.fileName}</strong>
+											<span>{delivery.kind === "text" ? "文本" : delivery.contentType}</span>
+										</td>
+										<td>
+											<span className={`admin-status admin-status-${delivery.status}`}>{statusLabel(delivery.status)}</span>
+											{delivery.deletedReason ? <span>{delivery.deletedReason}</span> : null}
+										</td>
+										<td>{formatBytes(delivery.size)}</td>
+										<td>{delivery.downloadCount}/{delivery.maxDownloads}</td>
+										<td>{formatDate(delivery.createdAt)}</td>
+										<td>{formatDate(delivery.expiresAt)}</td>
+										<td title={delivery.upload.userAgent ?? undefined}>{sourceLocation(delivery.upload)}</td>
+										<td>{sourceBrowser(delivery.upload)}</td>
+										<td>
+											<div className="flex flex-wrap gap-2">
+												<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => loadEvents(delivery)}>
+													事件
+												</button>
+												<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => beginEdit(delivery)}>
+													操作
+												</button>
+											</div>
+										</td>
 									</tr>
-								</thead>
-								<tbody>
-									{deliveries.map((delivery) => (
-										<tr key={delivery.id}>
-											<td>
-												<strong>{delivery.fileName}</strong>
-												<span>{delivery.kind === "text" ? "文本" : delivery.contentType}</span>
-											</td>
-											<td>
-												<span className={`admin-status admin-status-${delivery.status}`}>{statusLabel(delivery.status)}</span>
-												{delivery.deletedReason ? <span>{delivery.deletedReason}</span> : null}
-											</td>
-											<td>{formatBytes(delivery.size)}</td>
-											<td>
-												{editingId === delivery.id ? (
-													<div className="flex min-w-[160px] items-center gap-2">
-														<input
-															className="h-9 w-16"
-															min={1}
-															type="number"
-															value={editMaxDownloads}
-															onChange={(event) => setEditMaxDownloads(event.target.value)}
-															aria-label="最大次数"
-														/>
-														<span>/</span>
-														<input
-															className="h-9 w-16"
-															min={0}
-															type="number"
-															value={editDownloadCount}
-															onChange={(event) => setEditDownloadCount(event.target.value)}
-															aria-label="已用次数"
-														/>
-													</div>
-												) : (
-													`${delivery.downloadCount}/${delivery.maxDownloads}`
-												)}
-											</td>
-											<td>{formatDate(delivery.createdAt)}</td>
-											<td>{formatDate(delivery.expiresAt)}</td>
-											<td title={delivery.upload.userAgent ?? undefined}>{sourceLocation(delivery.upload)}</td>
-											<td>{sourceBrowser(delivery.upload)}</td>
-											<td>
-												<div className="flex flex-wrap gap-2">
-													<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => loadEvents(delivery)}>
-														事件
-													</button>
-													{editingId === delivery.id ? (
-														<>
-															<button className="primary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => saveCounts(delivery)}>
-																保存
-															</button>
-															<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => setEditingId(null)}>
-																取消
-															</button>
-														</>
-													) : (
-														<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => beginEdit(delivery)}>
-															次数
-														</button>
-													)}
-													<button
-														className="danger-button min-h-9 rounded-lg px-3 text-sm"
-														disabled={delivery.deletedAt !== null}
-														type="button"
-														onClick={() => revokeDelivery(delivery)}
-													>
-														撤回
-													</button>
-												</div>
-											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-							{deliveries.length === 0 ? <p className="panel-copy py-6 text-center">暂无记录</p> : null}
+								))}
+							</tbody>
+						</table>
+						{deliveries.length === 0 ? <p className="panel-copy py-6 text-center">暂无记录</p> : null}
+					</div>
+					<div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--hairline)] pt-4">
+						<span className="panel-copy">第 {page} / {totalPages} 页</span>
+						<div className="flex gap-2">
+							<button className="secondary-button min-h-9 rounded-lg px-4 text-sm" disabled={page <= 1 || busy === "list"} type="button" onClick={() => setPage((value) => Math.max(1, value - 1))}>
+								上一页
+							</button>
+							<button className="secondary-button min-h-9 rounded-lg px-4 text-sm" disabled={page >= totalPages || busy === "list"} type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+								下一页
+							</button>
 						</div>
-						<div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--hairline)] pt-4">
-							<span className="panel-copy">第 {page} / {totalPages} 页</span>
-							<div className="flex gap-2">
-								<button className="secondary-button min-h-9 rounded-lg px-4 text-sm" disabled={page <= 1 || busy === "list"} type="button" onClick={() => setPage((value) => Math.max(1, value - 1))}>
-									上一页
+					</div>
+				</section>
+			</section>
+
+			{eventDelivery ? (
+				<AdminModal title="事件" subtitle={eventDelivery.fileName} onClose={() => setEventDelivery(null)} dark>
+					<div className="flex flex-col gap-3">
+						{message ? <p className="auth-error">{message}</p> : null}
+						{busy === "events" ? <p className="panel-copy">读取中</p> : null}
+						{events.map((event) => (
+							<div className="admin-event" key={event.id}>
+								<div className="flex items-center justify-between gap-3">
+									<strong>{actionLabel(event.action)}</strong>
+									<span>{formatDate(event.createdAt)}</span>
+								</div>
+								<p>{sourceLocation(event.source)} · {sourceBrowser(event.source)}</p>
+								{event.previousMaxDownloads !== null || event.nextMaxDownloads !== null ? (
+									<p>
+										次数 {event.previousDownloadCount ?? "-"} / {event.previousMaxDownloads ?? "-"} → {event.nextDownloadCount ?? "-"} / {event.nextMaxDownloads ?? "-"}
+									</p>
+								) : null}
+								{event.note ? <p>{event.note}</p> : null}
+							</div>
+						))}
+						{events.length === 0 && busy !== "events" ? <p className="panel-copy">暂无事件</p> : null}
+					</div>
+				</AdminModal>
+			) : null}
+
+			{actionDelivery ? (
+				<AdminModal title="操作" subtitle={actionDelivery.fileName} onClose={() => setActionDelivery(null)}>
+					<div className="grid gap-5">
+						{message ? <p className="auth-error">{message}</p> : null}
+						<div className="grid gap-3 sm:grid-cols-2">
+							<label className="field flex flex-col gap-2">
+								<span>最大次数</span>
+								<input
+									className="h-[42px] w-full"
+									min={1}
+									type="number"
+									value={editMaxDownloads}
+									onChange={(event) => setEditMaxDownloads(event.target.value)}
+								/>
+							</label>
+							<label className="field flex flex-col gap-2">
+								<span>已用次数</span>
+								<input
+									className="h-[42px] w-full"
+									min={0}
+									type="number"
+									value={editDownloadCount}
+									onChange={(event) => setEditDownloadCount(event.target.value)}
+								/>
+							</label>
+						</div>
+						<div className="rounded-lg border border-[var(--hairline)] p-4 text-sm text-[var(--muted)]">
+							<p className="m-0">当前状态：{statusLabel(actionDelivery.status)}</p>
+							<p className="m-0 mt-2">当前次数：{actionDelivery.downloadCount} / {actionDelivery.maxDownloads}</p>
+							{actionDelivery.deletedReason ? <p className="m-0 mt-2">删除原因：{actionDelivery.deletedReason}</p> : null}
+						</div>
+						<div className="flex flex-wrap justify-between gap-3 border-t border-[var(--hairline)] pt-4">
+							<button
+								className="danger-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium"
+								disabled={actionDelivery.deletedAt !== null || busy === "revoke"}
+								type="button"
+								onClick={() => revokeDelivery(actionDelivery)}
+							>
+								{busy === "revoke" ? "撤回中" : "撤回文件"}
+							</button>
+							<div className="flex flex-wrap gap-2">
+								<button className="secondary-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium" type="button" onClick={() => setActionDelivery(null)}>
+									关闭
 								</button>
-								<button className="secondary-button min-h-9 rounded-lg px-4 text-sm" disabled={page >= totalPages || busy === "list"} type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
-									下一页
+								<button
+									className="primary-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium"
+									disabled={busy === "counts"}
+									type="button"
+									onClick={() => saveCounts(actionDelivery)}
+								>
+									{busy === "counts" ? "保存中" : "保存次数"}
 								</button>
 							</div>
 						</div>
-					</section>
-
-					<aside className="panel panel-dark flex flex-col gap-4">
-						<div>
-							<h2>事件</h2>
-							<p className="panel-copy">{selectedTitle}</p>
-						</div>
-						<div className="flex flex-col gap-3">
-							{busy === "events" ? <p className="panel-copy">读取中</p> : null}
-							{events.map((event) => (
-								<div className="admin-event" key={event.id}>
-									<div className="flex items-center justify-between gap-3">
-										<strong>{actionLabel(event.action)}</strong>
-										<span>{formatDate(event.createdAt)}</span>
-									</div>
-									<p>{sourceLocation(event.source)} · {sourceBrowser(event.source)}</p>
-									{event.previousMaxDownloads !== null || event.nextMaxDownloads !== null ? (
-										<p>
-											次数 {event.previousDownloadCount ?? "-"} / {event.previousMaxDownloads ?? "-"} → {event.nextDownloadCount ?? "-"} / {event.nextMaxDownloads ?? "-"}
-										</p>
-									) : null}
-									{event.note ? <p>{event.note}</p> : null}
-								</div>
-							))}
-							{selectedDelivery && events.length === 0 && busy !== "events" ? <p className="panel-copy">暂无事件</p> : null}
-						</div>
-					</aside>
-				</div>
-			</section>
+					</div>
+				</AdminModal>
+			) : null}
 		</main>
+	);
+}
+
+function AdminModal({
+	children,
+	dark = false,
+	onClose,
+	subtitle,
+	title,
+}: {
+	children: ReactNode;
+	dark?: boolean;
+	onClose: () => void;
+	subtitle: string;
+	title: string;
+}) {
+	useEffect(() => {
+		function closeOnEscape(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				onClose();
+			}
+		}
+
+		window.addEventListener("keydown", closeOnEscape);
+		return () => window.removeEventListener("keydown", closeOnEscape);
+	}, [onClose]);
+
+	return (
+		<div className="admin-modal-backdrop" role="presentation" onMouseDown={onClose}>
+			<section
+				aria-modal="true"
+				className={`admin-modal ${dark ? "panel-dark" : ""}`}
+				role="dialog"
+				onMouseDown={(event) => event.stopPropagation()}
+			>
+				<div className="flex items-start justify-between gap-4">
+					<div>
+						<h2>{title}</h2>
+						<p className="panel-copy">{subtitle}</p>
+					</div>
+					<button className="secondary-button admin-modal-close" type="button" aria-label="关闭弹窗" onClick={onClose}>
+						×
+					</button>
+				</div>
+				{children}
+			</section>
+		</div>
 	);
 }
 
