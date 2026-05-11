@@ -19,6 +19,11 @@ import {
 	requireSiteAuth,
 } from "@/lib/locker";
 
+type FixedLengthStreamConstructor = new (expectedLength: number) => {
+	readable: ReadableStream;
+	writable: WritableStream;
+};
+
 export async function POST(request: Request) {
 	const readonly = await requireWritableMode();
 	if (readonly) {
@@ -84,10 +89,25 @@ export async function POST(request: Request) {
 	let pipePromise: Promise<void> | undefined;
 
 	try {
-		const fixedLengthStream = new FixedLengthStream(size);
-		pipePromise = request.body.pipeTo(fixedLengthStream.writable);
+		const fixedLengthStreamConstructor = (
+			globalThis as typeof globalThis & {
+				FixedLengthStream?: FixedLengthStreamConstructor;
+			}
+		).FixedLengthStream;
+		let body: ReadableStream | ArrayBuffer;
 
-		await bucket.put(objectKey, fixedLengthStream.readable, {
+		if (fixedLengthStreamConstructor) {
+			const fixedLengthStream = new fixedLengthStreamConstructor(size);
+			pipePromise = request.body.pipeTo(fixedLengthStream.writable);
+			body = fixedLengthStream.readable;
+		} else {
+			body = await request.arrayBuffer();
+			if (body.byteLength !== size) {
+				return json({ error: "Request body length does not match content-length." }, 400);
+			}
+		}
+
+		await bucket.put(objectKey, body, {
 			httpMetadata: {
 				contentDisposition: contentDisposition(fileName),
 				contentType,
