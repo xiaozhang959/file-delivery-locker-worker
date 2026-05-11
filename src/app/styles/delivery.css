@@ -27,6 +27,8 @@
 }
 
 .delivery-box {
+	min-width: 0;
+	width: 100%;
 	border-top: 1px solid rgba(250, 249, 245, 0.1);
 	padding-top: 18px;
 }
@@ -42,6 +44,11 @@
 	line-height: 1.4;
 }
 
+.text-preview {
+	min-width: 0;
+	width: 100%;
+}
+
 .text-preview small {
 	color: var(--on-dark-soft);
 	font-size: 12px;
@@ -49,12 +56,19 @@
 }
 
 .text-preview pre {
-	overflow-wrap: anywhere;
+	display: block;
+	max-height: 320px;
+	max-width: 100%;
+	min-height: 180px;
+	min-width: 0;
+	overflow: auto;
+	overflow-wrap: normal;
 	border: 1px solid rgba(250, 249, 245, 0.12);
 	border-radius: 8px;
 	background: var(--surface-dark-elevated);
 	margin: 0;
 	padding: 14px;
+	white-space: pre;
 	color: var(--on-dark);
 	font-family: var(--font-body);
 	font-size: 14px;

@@ -150,7 +150,7 @@ export function UploadPanel({
 			{deliveryMode === "text" ? (
 				<div className={`text-dropzone field flex flex-col gap-3 ${isDragActive ? "is-drag-active" : ""}`}>
 					<textarea
-						className="min-h-[230px] w-full resize-y"
+						className="h-[230px] w-full resize-none"
 						disabled={demoMode}
 						value={textContent}
 						onChange={(event) => onTextContentChange(event.target.value)}

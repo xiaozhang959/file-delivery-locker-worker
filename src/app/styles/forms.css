@@ -36,7 +36,15 @@
 }
 
 .text-dropzone textarea {
-	min-height: 204px;
+	display: block;
+	height: 230px;
+	max-height: 230px;
+	max-width: 100%;
+	min-height: 230px;
+	overflow: auto;
+	resize: none;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 .text-dropzone-hint {
