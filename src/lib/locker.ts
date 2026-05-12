@@ -879,8 +879,7 @@ async function hashAuthPassword(kind: AuthKind, password: string) {
 
 async function getAuthSubjectHash(kind: AuthKind, request: Request) {
 	const ip = getRequestIp(request) ?? "unknown";
-	const userAgent = request.headers.get("user-agent")?.slice(0, 500) ?? "";
-	return hashText(`auth-failure:${kind}:${ip}\n${userAgent}`);
+	return hashText(`auth-failure:v2:${kind}:${ip}`);
 }
 
 async function secretDigestBytes(value: string) {
