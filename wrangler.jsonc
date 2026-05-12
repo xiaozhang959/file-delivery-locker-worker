@@ -30,9 +30,13 @@
 	},
 	"upload_source_maps": true,
 	"vars": {
-		"SITE_PASSWORD": "1234",
-		"ADMIN_PASSWORD": "1234",
 		"DEMO_MODE": "false"
+	},
+	"secrets": {
+		"required": [
+			"SITE_PASSWORD",
+			"ADMIN_PASSWORD"
+		]
 	},
 	"r2_buckets": [
 		{

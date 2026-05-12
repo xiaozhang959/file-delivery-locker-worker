@@ -1,0 +1,3 @@
+# Local-only development values. Do not commit real passwords.
+SITE_PASSWORD=change-me-site-password
+ADMIN_PASSWORD=change-me-admin-password

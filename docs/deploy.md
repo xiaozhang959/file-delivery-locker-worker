@@ -8,11 +8,18 @@
 
 ![change jsonc](./image/change_jsonc.png)
 
-划到下面添加环境变量
+划到下面确认普通环境变量
 
-- `SITE_PASSWORD`: 站点密码-字符串类型: 选填, 如果此环境变量存在, 进入网站时会要求输入密码
-- `ADMIN_PASSWORD`*: 后台密码-字符串类型: 必填, 如果此环境变量不存在无法进入管理后台 `/admin`
 - `DEMO_MODE`: 演示模式-布尔类型: 默认 false, 开启后前台无需站点密码且保持只读；后台仍需 `ADMIN_PASSWORD` 登录，且不能读取文本内容或下载文件
+
+密码不要写入 `wrangler.jsonc`。部署前使用 Cloudflare Secrets 保存：
+
+```bash
+bunx wrangler secret put SITE_PASSWORD
+bunx wrangler secret put ADMIN_PASSWORD
+```
+
+`SITE_PASSWORD` 是站点访问密码，`ADMIN_PASSWORD` 是后台密码。`wrangler.jsonc` 已把这两个名称声明为必需 Secret，缺少时部署会失败。
 
 在侧边栏 -> 计算 -> workers 和 Pages 下创建一个应用程序
 

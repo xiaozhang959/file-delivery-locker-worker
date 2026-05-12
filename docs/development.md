@@ -19,11 +19,16 @@ bun install
 - `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，这是代码访问 R2 的变量名。
 - `d1_databases[0].binding`：保持为 `DB`，这是代码访问 D1 的变量名。
 - `d1_databases[0].database_name`：本地迁移命令中使用的数据库名称。
-- `vars.SITE_PASSWORD`：站点访问密码；留空时本地首页不需要密码。
-- `vars.ADMIN_PASSWORD`：管理后台密码；留空时 `/admin` 会提示未配置。
+- `secrets.required`：生产部署必需的 Secret 名称，包含 `SITE_PASSWORD` 和 `ADMIN_PASSWORD`。
 - `vars.DEMO_MODE`：只读演示模式；本地调试写入逻辑时建议保持 `false`。
 
 `binding` 是代码里的变量名，不要改成资源真实名称。项目通过 `env.FILE_BUCKET` 访问 R2，通过 `env.DB` 访问 D1。
+
+本地开发不要把密码写进 `wrangler.jsonc`。可以复制 `.dev.vars.example` 为 `.dev.vars`，再填入只在本机使用的密码：
+
+```bash
+cp .dev.vars.example .dev.vars
+```
 
 ## 初始化本地 D1
 
