@@ -63,27 +63,31 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 		.all<DeliveryEventRow>();
 
 	return json({
-		events: (rows.results ?? []).map((row) => ({
-			id: row.id,
-			deliveryId: row.delivery_id,
-			action: row.action,
-			actor: row.actor,
-			note: row.note,
-			previousMaxDownloads: row.previous_max_downloads,
-			previousDownloadCount: row.previous_download_count,
-			nextMaxDownloads: row.next_max_downloads,
-			nextDownloadCount: row.next_download_count,
-			createdAt: new Date(row.created_at).toISOString(),
-			source: {
-				ip: row.ip,
-				userAgent: row.user_agent,
-				browser: row.browser,
-				os: row.os,
-				device: row.device,
-				country: row.country,
-				region: row.region,
-				city: row.city,
-			},
-		})),
+		events: (rows.results ?? []).map(serializeDeliveryEvent),
 	});
+}
+
+function serializeDeliveryEvent(row: DeliveryEventRow) {
+	return {
+		id: row.id,
+		deliveryId: row.delivery_id,
+		action: row.action,
+		actor: row.actor,
+		note: row.note,
+		previousMaxDownloads: row.previous_max_downloads,
+		previousDownloadCount: row.previous_download_count,
+		nextMaxDownloads: row.next_max_downloads,
+		nextDownloadCount: row.next_download_count,
+		createdAt: new Date(row.created_at).toISOString(),
+		source: {
+			ip: row.ip,
+			userAgent: row.user_agent,
+			browser: row.browser,
+			os: row.os,
+			device: row.device,
+			country: row.country,
+			region: row.region,
+			city: row.city,
+		},
+	};
 }
