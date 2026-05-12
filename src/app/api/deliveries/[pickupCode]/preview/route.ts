@@ -1,6 +1,7 @@
 import {
 	MAX_TEXT_SIZE,
 	cleanupPowArtifacts,
+	deleteStoredObjectIfUnreferenced,
 	type DeliveryRow,
 	type LockerBucket,
 	type LockerDb,
@@ -55,10 +56,12 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 			`SELECT
 				id,
 				object_key,
+				COALESCE(storage_key, object_key) AS storage_key,
 				file_name,
 				content_type,
 				delivery_kind,
 				size,
+				content_hash,
 				pickup_code_hash,
 				manage_code_hash,
 				max_downloads,
@@ -98,7 +101,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 		return json({ error: `Delivery is ${unavailable}.` }, 410);
 	}
 
-	const object = await bucket.get(row.object_key);
+	const object = await bucket.get(row.storage_key);
 	if (!object) {
 		if (!demoMode) {
 			ctx.waitUntil(markDeleted(db, bucket, row, now, "missing_object"));
@@ -135,7 +138,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	}
 
 	if (reachedLimit) {
-		ctx.waitUntil(bucket.delete(row.object_key));
+		ctx.waitUntil(deleteStoredObjectIfUnreferenced(db, bucket, row.storage_key));
 	}
 	ctx.waitUntil(
 		recordDeliveryEvent(db, {
@@ -169,5 +172,5 @@ async function markDeleted(db: LockerDb, bucket: LockerBucket, row: DeliveryRow,
 		.prepare("UPDATE file_deliveries SET deleted_at = ?, deleted_reason = ? WHERE id = ? AND deleted_at IS NULL")
 		.bind(now, reason, row.id)
 		.run();
-	await bucket.delete(row.object_key);
+	await deleteStoredObjectIfUnreferenced(db, bucket, row.storage_key, now);
 }

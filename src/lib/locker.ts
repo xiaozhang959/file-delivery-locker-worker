@@ -122,6 +122,8 @@ export type LockerBucket = {
 
 const fileDeliveryColumns: Record<string, string> = {
 	delivery_kind: "TEXT NOT NULL DEFAULT 'file'",
+	storage_key: "TEXT",
+	content_hash: "TEXT",
 	upload_ip: "TEXT",
 	upload_user_agent: "TEXT",
 	upload_browser: "TEXT",
@@ -230,10 +232,12 @@ export type DeliveryKind = "file" | "text";
 export type DeliveryRow = {
 	id: string;
 	object_key: string;
+	storage_key: string;
 	file_name: string;
 	content_type: string;
 	delivery_kind: DeliveryKind;
 	size: number;
+	content_hash: string | null;
 	pickup_code_hash: string;
 	manage_code_hash: string;
 	max_downloads: number;
@@ -323,9 +327,11 @@ async function initializeDatabaseSchema(db: LockerDb) {
 			`CREATE TABLE IF NOT EXISTS file_deliveries (
 				id TEXT PRIMARY KEY,
 				object_key TEXT NOT NULL UNIQUE,
+				storage_key TEXT,
 				file_name TEXT NOT NULL,
 				content_type TEXT NOT NULL,
 				size INTEGER NOT NULL,
+				content_hash TEXT,
 				pickup_code_hash TEXT NOT NULL UNIQUE,
 				manage_code_hash TEXT NOT NULL UNIQUE,
 				max_downloads INTEGER NOT NULL,
@@ -348,6 +354,7 @@ async function initializeDatabaseSchema(db: LockerDb) {
 		.run();
 
 	await ensureFileDeliveryColumns(db);
+	await db.prepare("UPDATE file_deliveries SET storage_key = object_key WHERE storage_key IS NULL OR storage_key = ''").run();
 
 	await db
 		.prepare(
@@ -478,6 +485,8 @@ async function createDatabaseIndexes(db: LockerDb) {
 		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_pickup_code_hash ON file_deliveries (pickup_code_hash)",
 		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_manage_code_hash ON file_deliveries (manage_code_hash)",
 		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_expires_at ON file_deliveries (expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_content_hash ON file_deliveries (content_hash, size)",
+		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_storage_key ON file_deliveries (storage_key)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_delivery_id ON delivery_events (delivery_id, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_created_at ON delivery_events (created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_action ON delivery_events (action)",
@@ -1234,6 +1243,56 @@ export async function createUniquePickupCode(db: LockerDb) {
 	}
 
 	throw new Error("Unable to generate a unique pickup code.");
+}
+
+export async function hashContentBytes(bytes: ArrayBuffer) {
+	const digest = await crypto.subtle.digest("SHA-256", bytes);
+	return bytesToHex(new Uint8Array(digest));
+}
+
+export async function findReusableStoredObject(db: LockerDb, bucket: LockerBucket, contentHash: string, size: number, now = Date.now()) {
+	const rows = await db
+		.prepare(
+			`SELECT COALESCE(storage_key, object_key) AS storage_key
+			FROM file_deliveries
+			WHERE content_hash = ?
+				AND size = ?
+				AND deleted_at IS NULL
+				AND expires_at > ?
+				AND download_count < max_downloads
+			ORDER BY created_at DESC
+			LIMIT 5`,
+		)
+		.bind(contentHash, size, now)
+		.all<{ storage_key: string }>();
+
+	for (const row of rows.results ?? []) {
+		const storageKey = row.storage_key;
+		if (storageKey && (await bucket.get(storageKey))) {
+			return storageKey;
+		}
+	}
+
+	return null;
+}
+
+export async function deleteStoredObjectIfUnreferenced(db: LockerDb, bucket: LockerBucket, storageKey: string, now = Date.now()) {
+	const activeReference = await db
+		.prepare(
+			`SELECT id
+			FROM file_deliveries
+			WHERE COALESCE(storage_key, object_key) = ?
+				AND deleted_at IS NULL
+				AND expires_at > ?
+				AND download_count < max_downloads
+			LIMIT 1`,
+		)
+		.bind(storageKey, now)
+		.first<{ id: string }>();
+
+	if (!activeReference) {
+		await bucket.delete(storageKey);
+	}
 }
 
 export function normalizePickupCode(value: string) {

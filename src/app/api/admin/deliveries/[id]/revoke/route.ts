@@ -1,4 +1,5 @@
 import {
+	deleteStoredObjectIfUnreferenced,
 	type DeliveryRow,
 	getCloudflareBindings,
 	getRequestSource,
@@ -36,10 +37,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 			`SELECT
 				id,
 				object_key,
+				COALESCE(storage_key, object_key) AS storage_key,
 				file_name,
 				content_type,
 				delivery_kind,
 				size,
+				content_hash,
 				pickup_code_hash,
 				manage_code_hash,
 				max_downloads,
@@ -75,7 +78,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 		.prepare("UPDATE file_deliveries SET deleted_at = ?, deleted_reason = 'admin_revoked' WHERE id = ? AND deleted_at IS NULL")
 		.bind(now, row.id)
 		.run();
-	await bucket.delete(row.object_key);
+	await deleteStoredObjectIfUnreferenced(db, bucket, row.storage_key, now);
 	await recordDeliveryEvent(db, {
 		deliveryId: row.id,
 		action: "admin_revoke",

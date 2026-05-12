@@ -1,4 +1,5 @@
 import {
+	deleteStoredObjectIfUnreferenced,
 	type DeliveryRow,
 	getCloudflareBindings,
 	getRequestSource,
@@ -57,10 +58,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 			`SELECT
 				id,
 				object_key,
+				COALESCE(storage_key, object_key) AS storage_key,
 				file_name,
 				content_type,
 				delivery_kind,
 				size,
+				content_hash,
 				pickup_code_hash,
 				manage_code_hash,
 				max_downloads,
@@ -103,7 +106,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 			)
 			.bind(maxDownloads, downloadCount, now, row.id)
 			.run();
-		await bucket.delete(row.object_key);
+		await deleteStoredObjectIfUnreferenced(db, bucket, row.storage_key, now);
 	} else {
 		await db
 			.prepare(

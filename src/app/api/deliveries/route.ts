@@ -4,10 +4,13 @@ import {
 	contentDisposition,
 	createCode,
 	createUniquePickupCode,
+	deleteStoredObjectIfUnreferenced,
+	findReusableStoredObject,
 	getCloudflareBindings,
 	getContentType,
 	getRequestSource,
 	getSafeFileName,
+	hashContentBytes,
 	hashManageCode,
 	json,
 	parseDeliveryKind,
@@ -19,11 +22,6 @@ import {
 	requireWritableMode,
 	requireSiteAuth,
 } from "@/lib/locker";
-
-type FixedLengthStreamConstructor = new (expectedLength: number) => {
-	readable: ReadableStream;
-	writable: WritableStream;
-};
 
 export async function POST(request: Request) {
 	const readonly = await requireWritableMode();
@@ -92,48 +90,44 @@ export async function POST(request: Request) {
 	const manageCode = createCode(16);
 	const contentType = deliveryKind === "text" ? "text/plain;charset=utf-8" : getContentType(request);
 	const source = getRequestSource(request);
-	let pipePromise: Promise<void> | undefined;
+	let uploadedStorageKey: string | null = null;
 
 	try {
-		const fixedLengthStreamConstructor = (
-			globalThis as typeof globalThis & {
-				FixedLengthStream?: FixedLengthStreamConstructor;
-			}
-		).FixedLengthStream;
-		let body: ReadableStream | ArrayBuffer;
-
-		if (fixedLengthStreamConstructor) {
-			const fixedLengthStream = new fixedLengthStreamConstructor(size);
-			pipePromise = request.body.pipeTo(fixedLengthStream.writable);
-			body = fixedLengthStream.readable;
-		} else {
-			body = await request.arrayBuffer();
-			if (body.byteLength !== size) {
-				return json({ error: "Request body length does not match content-length." }, 400);
-			}
+		const body = await request.arrayBuffer();
+		if (body.byteLength !== size) {
+			return json({ error: "Request body length does not match content-length." }, 400);
 		}
 
-		await bucket.put(objectKey, body, {
-			httpMetadata: {
-				contentDisposition: contentDisposition(fileName),
-				contentType,
-			},
-			customMetadata: {
-				deliveryId: id,
-				fileName,
-			},
-		});
-		await pipePromise;
+		const contentHash = await hashContentBytes(body);
+		const reusableStorageKey = await findReusableStoredObject(db, bucket, contentHash, size, createdAt);
+		const storageKey = reusableStorageKey ?? objectKey;
+
+		if (!reusableStorageKey) {
+			await bucket.put(storageKey, body, {
+				httpMetadata: {
+					contentDisposition: contentDisposition(fileName),
+					contentType,
+				},
+				customMetadata: {
+					contentHash,
+					deliveryId: id,
+					fileName,
+				},
+			});
+			uploadedStorageKey = storageKey;
+		}
 
 		await db
 			.prepare(
 				`INSERT INTO file_deliveries (
 					id,
 					object_key,
+					storage_key,
 					file_name,
 					content_type,
 					delivery_kind,
 					size,
+					content_hash,
 					pickup_code_hash,
 					manage_code_hash,
 					max_downloads,
@@ -148,15 +142,17 @@ export async function POST(request: Request) {
 					upload_country,
 					upload_region,
 					upload_city
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.bind(
 				id,
 				objectKey,
+				storageKey,
 				fileName,
 				contentType,
 				deliveryKind,
 				size,
+				contentHash,
 				pickup.hash,
 				await hashManageCode(manageCode),
 				maxDownloads,
@@ -182,8 +178,9 @@ export async function POST(request: Request) {
 			createdAt,
 		});
 	} catch (error) {
-		await pipePromise?.catch(() => undefined);
-		await bucket.delete(objectKey).catch(() => undefined);
+		if (uploadedStorageKey) {
+			await deleteStoredObjectIfUnreferenced(db, bucket, uploadedStorageKey).catch(() => undefined);
+		}
 		console.error(
 			JSON.stringify({
 				event: "delivery_create_failed",

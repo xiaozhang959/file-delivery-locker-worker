@@ -48,10 +48,12 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 			`SELECT
 				id,
 				object_key,
+				COALESCE(storage_key, object_key) AS storage_key,
 				file_name,
 				content_type,
 				delivery_kind,
 				size,
+				content_hash,
 				pickup_code_hash,
 				manage_code_hash,
 				max_downloads,
