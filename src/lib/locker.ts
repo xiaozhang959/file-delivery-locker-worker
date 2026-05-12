@@ -192,11 +192,11 @@ export async function requireWritableMode() {
 }
 
 export async function createSiteAuthToken(sitePassword: string) {
-	return hashText(`file-delivery-locker:${sitePassword}`);
+	return hashText(`file-delivery-locker-worker:${sitePassword}`);
 }
 
 export async function createAdminAuthToken(adminPassword: string) {
-	return hashText(`file-delivery-locker:admin:${adminPassword}`);
+	return hashText(`file-delivery-locker-worker:admin:${adminPassword}`);
 }
 
 export function serializeSiteAuthCookie(token: string, requestUrl: string) {

@@ -1,5 +1,5 @@
 {
-	"name": "file-delivery-locker",
+	"name": "file-delivery-locker-worker",
 	"version": "0.1.0",
 	"private": true,
 	"scripts": {

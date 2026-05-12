@@ -64,7 +64,7 @@ cp wrangler.example.jsonc wrangler.jsonc
 复制配置后，执行本地数据库迁移：
 
 ```bash
-bunx wrangler d1 migrations apply file-delivery-locker --local
+bunx wrangler d1 migrations apply file-delivery-locker-worker --local
 ```
 
 如果你修改了 `wrangler.jsonc` 里的 `database_name`，把命令中的 `file-delivery-locker` 替换成对应名称。
