@@ -22,10 +22,6 @@ build/
 # Wrangler / Miniflare local state
 .wrangler/
 
-# Local Cloudflare config
-wrangler.jsonc
-!wrangler.example.jsonc
-
 # Generated Cloudflare types
 cloudflare-env.d.ts
 

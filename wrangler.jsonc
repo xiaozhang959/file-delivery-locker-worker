@@ -1,13 +1,6 @@
-/**
- * Copy this file to wrangler.jsonc and replace the placeholder values with
- * your own Cloudflare Worker, R2, and D1 resource names/IDs.
- *
- * SITE_PASSWORD is a regular Worker variable so it can also be edited from
- * the Cloudflare dashboard. Leave it empty to disable the password gate.
- */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "<worker-name>",
+	"name": "file-delivery-locker",
 	"main": ".open-next/worker.js",
 	"compatibility_date": "2026-05-09",
 	"compatibility_flags": [
@@ -28,7 +21,7 @@
 			// Self-reference service binding. This service value should match `name`.
 			// See https://opennext.js.org/cloudflare/caching
 			"binding": "WORKER_SELF_REFERENCE",
-			"service": "<worker-name>"
+			"service": "file-delivery-locker"
 		}
 	],
 	"observability": {
@@ -41,18 +34,6 @@
 		"ADMIN_PASSWORD": "",
 		"DEMO_MODE": "false"
 	},
-	"r2_buckets": [
-		{
-			"binding": "FILE_BUCKET",
-			"bucket_name": "<r2-bucket-name>"
-		}
-	],
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "<d1-database-name>",
-			"database_id": "<d1-database-id>",
-			"migrations_dir": "migrations"
-		}
-	]
+	"r2_buckets": [],
+	"d1_databases": []
 }
