@@ -1,4 +1,4 @@
-import { type DeliveryRow, getCloudflareBindings, hashCode, json, requireCsrf, requireSiteAuth, requireWritableMode } from "@/lib/locker";
+import { type DeliveryRow, getCloudflareBindings, hashManageCode, json, requireCsrf, requireSiteAuth, requireWritableMode } from "@/lib/locker";
 
 export async function DELETE(request: Request, context: { params: Promise<{ manageCode: string }> }) {
 	const readonly = await requireWritableMode();
@@ -22,7 +22,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ mana
 	}
 
 	const { manageCode } = await context.params;
-	const manageCodeHash = await hashCode(manageCode);
+	const manageCodeHash = await hashManageCode(manageCode);
 	const row = await db
 		.prepare(
 			`SELECT

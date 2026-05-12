@@ -17,9 +17,10 @@
 ```bash
 bunx wrangler secret put SITE_PASSWORD
 bunx wrangler secret put ADMIN_PASSWORD
+bunx wrangler secret put PICKUP_CODE_PEPPER
 ```
 
-`SITE_PASSWORD` 是站点访问密码，`ADMIN_PASSWORD` 是后台密码。`wrangler.jsonc` 已把这两个名称声明为必需 Secret，缺少时部署会失败。
+`SITE_PASSWORD` 是站点访问密码，`ADMIN_PASSWORD` 是后台密码。`PICKUP_CODE_PEPPER` 用于对短取件码做 HMAC 哈希，建议使用高熵随机字符串，并在活跃投递过期前保持不变。`wrangler.jsonc` 已把这些名称声明为必需 Secret，缺少时部署会失败。
 
 在侧边栏 -> 计算 -> workers 和 Pages 下创建一个应用程序
 

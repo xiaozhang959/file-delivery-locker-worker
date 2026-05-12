@@ -30,6 +30,7 @@ type SiteEnv = {
 	FILE_BUCKET: LockerBucket;
 	SITE_PASSWORD?: string;
 	ADMIN_PASSWORD?: string;
+	PICKUP_CODE_PEPPER?: string;
 	DEMO_MODE?: string;
 };
 
@@ -515,6 +516,16 @@ export async function getSitePassword() {
 export async function getAdminPassword() {
 	const { env } = await getCloudflareContext({ async: true });
 	return normalizeSitePassword((env as SiteEnv).ADMIN_PASSWORD);
+}
+
+async function getPickupCodePepper() {
+	const { env } = await getCloudflareContext({ async: true });
+	const pepper = (env as SiteEnv).PICKUP_CODE_PEPPER?.trim();
+	if (!pepper) {
+		throw new Error("PICKUP_CODE_PEPPER secret is not configured.");
+	}
+
+	return pepper;
 }
 
 export async function getDemoMode() {
@@ -1209,6 +1220,23 @@ export function createPickupCode() {
 	return code;
 }
 
+export async function createUniquePickupCode(db: LockerDb) {
+	for (let attempt = 0; attempt < 10; attempt += 1) {
+		const code = createPickupCode();
+		const [pickupCodeHash, legacyPickupCodeHash] = await getPickupCodeHashCandidates(code);
+		const existing = await db
+			.prepare("SELECT id FROM file_deliveries WHERE pickup_code_hash IN (?, ?) LIMIT 1")
+			.bind(pickupCodeHash, legacyPickupCodeHash)
+			.first<{ id: string }>();
+
+		if (!existing) {
+			return { code, hash: pickupCodeHash };
+		}
+	}
+
+	throw new Error("Unable to generate a unique pickup code.");
+}
+
 export function normalizePickupCode(value: string) {
 	return value
 		.trim()
@@ -1221,13 +1249,39 @@ export function isValidPickupCode(value: string) {
 	return /^[A-Z0-9]{6}$/.test(value.trim().toUpperCase());
 }
 
-export async function hashCode(code: string) {
+export async function hashPickupCode(code: string) {
+	const normalizedCode = normalizePickupCode(code);
+	const digest = await hmacSha256Hex(await getPickupCodePepper(), `pickup-code:${normalizedCode}`);
+	return `hmac-sha256:${digest}`;
+}
+
+export async function getPickupCodeHashCandidates(code: string) {
+	const normalizedCode = normalizePickupCode(code);
+	return [await hashPickupCode(normalizedCode), await hashLegacyCode(normalizedCode)];
+}
+
+export async function hashManageCode(code: string) {
+	return hashLegacyCode(code);
+}
+
+async function hashLegacyCode(code: string) {
 	return hashText(code.trim().toUpperCase());
 }
 
 async function hashText(value: string) {
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-	return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+	return bytesToHex(new Uint8Array(digest));
+}
+
+async function hmacSha256Hex(secret: string, value: string) {
+	const encoder = new TextEncoder();
+	const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+	const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(value));
+	return bytesToHex(new Uint8Array(signature));
+}
+
+function bytesToHex(bytes: Uint8Array) {
+	return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function randomIndex(max: number) {

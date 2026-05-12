@@ -4,9 +4,9 @@ import {
 	type LockerDb,
 	cleanupPowArtifacts,
 	contentDisposition,
+	getPickupCodeHashCandidates,
 	getCloudflareBindings,
 	getRequestSource,
-	hashCode,
 	isPickupAccessTokenValid,
 	isValidPickupCode,
 	isUnavailable,
@@ -36,8 +36,17 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 		return json({ error: "Invalid pickup code." }, 400);
 	}
 
-	const pickupCodeHash = await hashCode(normalizePickupCode(pickupCode));
-	if (!(await isPickupAccessTokenValid(db, pickupCodeHash, request.headers.get("x-pickup-access-token")))) {
+	const pickupCodeHashes = await getPickupCodeHashCandidates(normalizePickupCode(pickupCode));
+	const pickupAccessToken = request.headers.get("x-pickup-access-token");
+	let pickupCodeHash: string | null = null;
+	for (const candidateHash of pickupCodeHashes) {
+		if (await isPickupAccessTokenValid(db, candidateHash, pickupAccessToken)) {
+			pickupCodeHash = candidateHash;
+			break;
+		}
+	}
+
+	if (!pickupCodeHash) {
 		return json({ error: "Pickup access token is missing, invalid, or expired." }, request.headers.has("x-pickup-access-token") ? 403 : 428);
 	}
 

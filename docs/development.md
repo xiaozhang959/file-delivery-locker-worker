@@ -19,7 +19,7 @@ bun install
 - `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，这是代码访问 R2 的变量名。
 - `d1_databases[0].binding`：保持为 `DB`，这是代码访问 D1 的变量名。
 - `d1_databases[0].database_name`：本地迁移命令中使用的数据库名称。
-- `secrets.required`：生产部署必需的 Secret 名称，包含 `SITE_PASSWORD` 和 `ADMIN_PASSWORD`。
+- `secrets.required`：生产部署必需的 Secret 名称，包含 `SITE_PASSWORD`、`ADMIN_PASSWORD` 和 `PICKUP_CODE_PEPPER`。
 - `vars.DEMO_MODE`：只读演示模式；本地调试写入逻辑时建议保持 `false`。
 
 `binding` 是代码里的变量名，不要改成资源真实名称。项目通过 `env.FILE_BUCKET` 访问 R2，通过 `env.DB` 访问 D1。
@@ -85,6 +85,8 @@ bun run cf-typegen
 `SITE_PASSWORD` 为空时，首页和普通 API 不需要密码；设置后，浏览器会保存一个 7 天有效的服务端会话 Cookie。修改密码后已有会话会失效。
 
 `ADMIN_PASSWORD` 为空时，`/admin` 后台不可用；设置后，后台服务端会话 Cookie 有效期为 8 小时。
+
+`PICKUP_CODE_PEPPER` 用于对短取件码做 HMAC 哈希。生产环境必须配置高熵随机值；不要在活跃投递过期前轮换，否则用旧 Pepper 创建的 HMAC 取件码无法匹配；历史 SHA-256 取件码仍可兼容查询。
 
 `DEMO_MODE` 开启后，首页无需密码，且系统进入只读演示状态：不能上传文件、寄存文本、撤回文件、修改下载次数、读取文本内容或下载文件。后台仍需 `ADMIN_PASSWORD` 登录。
 

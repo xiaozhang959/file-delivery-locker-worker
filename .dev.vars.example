@@ -1,3 +1,4 @@
 # Local-only development values. Do not commit real passwords.
 SITE_PASSWORD=change-me-site-password
 ADMIN_PASSWORD=change-me-admin-password
+PICKUP_CODE_PEPPER=change-me-long-random-pickup-code-pepper

@@ -4,7 +4,7 @@ import {
 	createPickupAccessToken,
 	type DeliveryRow,
 	getCloudflareBindings,
-	hashCode,
+	getPickupCodeHashCandidates,
 	isValidPickupCode,
 	json,
 	normalizePickupCode,
@@ -42,7 +42,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 		return json({ error: "Invalid pickup code." }, 400);
 	}
 
-	const pickupCodeHash = await hashCode(normalizedPickupCode);
+	const pickupCodeHashes = await getPickupCodeHashCandidates(normalizedPickupCode);
 	const row = await db
 		.prepare(
 			`SELECT
@@ -61,9 +61,9 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 				deleted_at,
 				deleted_reason
 			FROM file_deliveries
-			WHERE pickup_code_hash = ?`,
+			WHERE pickup_code_hash IN (?, ?)`,
 		)
-		.bind(pickupCodeHash)
+		.bind(...pickupCodeHashes)
 		.first<DeliveryRow>();
 
 	if (!row) {
@@ -72,7 +72,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	}
 
 	await clearPickupPowFailure(db, request);
-	const pickupAccess = await createPickupAccessToken(db, pickupCodeHash, now);
+	const pickupAccess = await createPickupAccessToken(db, row.pickup_code_hash, now);
 	ctx.waitUntil(cleanupPowArtifacts(db, now).catch((error) => console.warn(error)));
 
 	return json({

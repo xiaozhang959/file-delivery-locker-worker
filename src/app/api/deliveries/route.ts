@@ -3,12 +3,12 @@ import {
 	MAX_TEXT_SIZE,
 	contentDisposition,
 	createCode,
-	createPickupCode,
+	createUniquePickupCode,
 	getCloudflareBindings,
 	getContentType,
 	getRequestSource,
 	getSafeFileName,
-	hashCode,
+	hashManageCode,
 	json,
 	parseDeliveryKind,
 	parseContentLength,
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
 	const createdAt = Date.now();
 	const expiresAt = createdAt + expiryHours * 60 * 60 * 1000;
 	const objectKey = `deliveries/${createdAt}/${id}`;
-	const pickupCode = createPickupCode();
+	const pickup = await createUniquePickupCode(db);
 	const manageCode = createCode(16);
 	const contentType = deliveryKind === "text" ? "text/plain;charset=utf-8" : getContentType(request);
 	const source = getRequestSource(request);
@@ -157,8 +157,8 @@ export async function POST(request: Request) {
 				contentType,
 				deliveryKind,
 				size,
-				await hashCode(pickupCode),
-				await hashCode(manageCode),
+				pickup.hash,
+				await hashManageCode(manageCode),
 				maxDownloads,
 				expiresAt,
 				createdAt,
@@ -195,13 +195,13 @@ export async function POST(request: Request) {
 	}
 
 	const origin = new URL(request.url).origin;
-	const encodedPickupCode = encodeURIComponent(pickupCode);
+	const encodedPickupCode = encodeURIComponent(pickup.code);
 	const pickupUrl = `${origin}/?pickupCode=${encodedPickupCode}`;
 
 	return json(
 		{
 			id,
-			pickupCode,
+			pickupCode: pickup.code,
 			manageCode,
 			fileName,
 			kind: deliveryKind,

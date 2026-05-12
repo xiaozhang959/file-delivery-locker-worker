@@ -35,7 +35,8 @@
 	"secrets": {
 		"required": [
 			"SITE_PASSWORD",
-			"ADMIN_PASSWORD"
+			"ADMIN_PASSWORD",
+			"PICKUP_CODE_PEPPER"
 		]
 	},
 	"r2_buckets": [
