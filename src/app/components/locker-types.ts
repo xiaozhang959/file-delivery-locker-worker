@@ -27,6 +27,12 @@ export type Delivery = {
 	status: "available" | "expired" | "deleted" | "depleted";
 };
 
+export type DeliveryLookupResult = {
+	delivery: Delivery;
+	pickupAccessToken: string;
+	pickupAccessExpiresAt: string;
+};
+
 export type ApiError = {
 	error?: string;
 };

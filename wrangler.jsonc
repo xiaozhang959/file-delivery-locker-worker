@@ -30,6 +30,8 @@
 	},
 	"upload_source_maps": true,
 	"vars": {
+		"SITE_PASSWORD": "1234",
+		"ADMIN_PASSWORD": "1234",
 		"DEMO_MODE": "false"
 	},
 	"r2_buckets": [

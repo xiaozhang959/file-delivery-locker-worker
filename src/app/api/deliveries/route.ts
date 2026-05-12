@@ -190,10 +190,7 @@ export async function POST(request: Request) {
 
 	const origin = new URL(request.url).origin;
 	const encodedPickupCode = encodeURIComponent(pickupCode);
-	const pickupUrl =
-		deliveryKind === "text"
-			? `${origin}/?pickupCode=${encodedPickupCode}`
-			: `${origin}/api/deliveries/${encodedPickupCode}/download`;
+	const pickupUrl = `${origin}/?pickupCode=${encodedPickupCode}`;
 
 	return json(
 		{

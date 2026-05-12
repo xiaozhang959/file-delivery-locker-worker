@@ -13,7 +13,9 @@
 		"cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
 	},
 	"dependencies": {
+		"@cap.js/server": "^4.0.5",
 		"@opennextjs/cloudflare": "^1.19.8",
+		"cap-widget": "^0.1.50",
 		"goey-toast": "^0.4.0",
 		"next": "16.2.5",
 		"react": "^19.1.7",

@@ -12,13 +12,7 @@ bun install
 
 ## 本地配置
 
-复制 Wrangler 配置模板：
-
-```bash
-cp wrangler.example.jsonc wrangler.jsonc
-```
-
-开发时重点检查这些配置：
+开发时重点检查 `wrangler.jsonc` 这些配置：
 
 - `name`：本地 Worker 名称，可使用默认项目名或自定义名称。
 - `services[0].service`：和 `name` 保持一致。
@@ -100,6 +94,8 @@ src/app/api/deliveries/route.ts                   创建文件/文本投递
 src/app/api/deliveries/[pickupCode]/route.ts      查询投递状态
 src/app/api/deliveries/[pickupCode]/preview/route.ts   预览文本投递
 src/app/api/deliveries/[pickupCode]/download/route.ts  下载投递内容
+src/app/api/pow/challenge/route.ts                创建 Cap.js PoW challenge
+src/app/api/pow/redeem/route.ts                   兑换 Cap.js PoW token
 src/app/api/deliveries/manage/[manageCode]/route.ts    通过管理码撤回
 src/app/api/admin/deliveries/route.ts             后台投递列表
 src/app/api/admin/deliveries/[id]/events/route.ts 后台事件列表
@@ -126,7 +122,15 @@ curl -X POST http://localhost:3000/api/deliveries \
 查询、下载和撤回：
 
 ```bash
-curl http://localhost:3000/api/deliveries/<pickupCode>
-curl -OJ http://localhost:3000/api/deliveries/<pickupCode>/download
+curl -X POST http://localhost:3000/api/pow/challenge
+curl -X POST http://localhost:3000/api/pow/redeem \
+  -H "content-type: application/json" \
+  --data '{"token":"<challengeToken>","solutions":[0]}'
+curl http://localhost:3000/api/deliveries/<pickupCode> \
+  -H "x-cap-token: <capToken>"
+curl -OJ http://localhost:3000/api/deliveries/<pickupCode>/download \
+  -H "x-pickup-access-token: <pickupAccessToken>"
 curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
 ```
+
+`/api/pow/redeem` 的 `solutions` 需由 Cap widget 计算；上面的数组仅用于展示请求形状。取件查询成功后会返回 `pickupAccessToken`，有效期 5 分钟，文本预览和文件下载都需要携带该 token。

@@ -1,13 +1,17 @@
 import {
 	MAX_TEXT_SIZE,
+	cleanupPowArtifacts,
 	type DeliveryRow,
 	type LockerBucket,
 	type LockerDb,
 	getCloudflareBindings,
 	getRequestSource,
 	hashCode,
+	isPickupAccessTokenValid,
+	isValidPickupCode,
 	isUnavailable,
 	json,
+	normalizePickupCode,
 	recordDeliveryEvent,
 	requireSiteAuth,
 } from "@/lib/locker";
@@ -24,7 +28,15 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	}
 
 	const { pickupCode } = await context.params;
-	const pickupCodeHash = await hashCode(pickupCode);
+	if (!isValidPickupCode(pickupCode)) {
+		return json({ error: "Invalid pickup code." }, 400);
+	}
+
+	const pickupCodeHash = await hashCode(normalizePickupCode(pickupCode));
+	if (!(await isPickupAccessTokenValid(db, pickupCodeHash, request.headers.get("x-pickup-access-token")))) {
+		return json({ error: "Pickup access token is missing, invalid, or expired." }, request.headers.has("x-pickup-access-token") ? 403 : 428);
+	}
+
 	const row = await db
 		.prepare(
 			`SELECT
@@ -51,6 +63,8 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	if (!row) {
 		return json({ error: "Delivery not found." }, 404);
 	}
+
+	ctx.waitUntil(cleanupPowArtifacts(db).catch((error) => console.warn(error)));
 
 	if (row.delivery_kind !== "text") {
 		return json({ error: "Preview is only available for text deliveries." }, 415);

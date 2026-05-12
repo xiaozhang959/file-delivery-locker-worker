@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { formatBytes, formatTime, normalizePickupCode } from "./locker-format";
+import { formatBytes, formatTime } from "./locker-format";
 import type { Delivery, TextPreview } from "./locker-types";
 import { Mini } from "./mini";
 import { PickupCodeInput } from "./pickup-code-input";
@@ -16,10 +16,13 @@ const statusText: Record<Delivery["status"], string> = {
 type PickupPanelProps = {
 	busy: boolean;
 	delivery: Delivery | null;
+	downloading: boolean;
 	pickupCode: string;
+	pickupAccessToken: string;
+	powStatus: string;
 	textPreview: TextPreview | null;
 	onCopy: (value: string) => void;
-	onDownloadStarted: () => void;
+	onDownload: () => void;
 	onPickupCodeChange: (value: string) => void;
 	onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
 };
@@ -27,10 +30,13 @@ type PickupPanelProps = {
 export function PickupPanel({
 	busy,
 	delivery,
+	downloading,
 	pickupCode,
+	pickupAccessToken,
+	powStatus,
 	textPreview,
 	onCopy,
-	onDownloadStarted,
+	onDownload,
 	onPickupCodeChange,
 	onSubmit,
 }: PickupPanelProps) {
@@ -49,6 +55,7 @@ export function PickupPanel({
 				<span aria-hidden="true">⌕</span>
 				{busy ? "查询中" : "查询文件"}
 			</button>
+			{powStatus && <p className="panel-copy m-0 text-center">{powStatus}</p>}
 
 			{delivery && (
 				<div className="delivery-box flex flex-col gap-4">
@@ -88,19 +95,15 @@ export function PickupPanel({
 							</div>
 						) : null
 					) : (
-							<a
+							<button
 								className="primary-button inline-flex min-h-10 items-center justify-center gap-[9px] rounded-lg px-5 text-sm leading-none font-medium no-underline"
-								aria-disabled={delivery.status !== "available"}
-								href={
-									delivery.status === "available"
-										? `/api/deliveries/${encodeURIComponent(normalizePickupCode(pickupCode))}/download`
-										: undefined
-								}
-								onClick={() => window.setTimeout(onDownloadStarted, 1200)}
+								disabled={delivery.status !== "available" || !pickupAccessToken || downloading}
+								type="button"
+								onClick={onDownload}
 							>
 								<span aria-hidden="true">↓</span>
-								下载文件
-							</a>
+								{downloading ? "下载中" : "下载文件"}
+							</button>
 					)}
 				</div>
 			)}

@@ -4,13 +4,22 @@ import {
 	type FormEvent,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { GooeyToaster, gooeyToast } from "goey-toast";
 import { AdminPanel } from "./components/admin-panel";
 import { readApiJson } from "./components/api-json";
 import { formatBytes, normalizePickupCode, PICKUP_CODE_LENGTH } from "./components/locker-format";
-import type { ApiError, Delivery, DeliveryKind, SiteStats, TextPreview, UploadResult } from "./components/locker-types";
+import type {
+	ApiError,
+	Delivery,
+	DeliveryKind,
+	DeliveryLookupResult,
+	SiteStats,
+	TextPreview,
+	UploadResult,
+} from "./components/locker-types";
 import { PickupPanel } from "./components/pickup-panel";
 import { StatsLockup } from "./components/stats-lockup";
 import { UploadPanel } from "./components/upload-panel";
@@ -38,8 +47,11 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 	const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
 	const [delivery, setDelivery] = useState<Delivery | null>(null);
 	const [textPreview, setTextPreview] = useState<TextPreview | null>(null);
+	const [pickupAccessToken, setPickupAccessToken] = useState("");
+	const [powStatus, setPowStatus] = useState("");
 	const [stats, setStats] = useState<SiteStats | null>(null);
-	const [busy, setBusy] = useState<"upload" | "lookup" | "revoke" | null>(null);
+	const [busy, setBusy] = useState<"upload" | "lookup" | "download" | "revoke" | null>(null);
+	const capProgressRef = useRef<(progress: number) => void>(() => undefined);
 
 	const selectedFileSize = useMemo(() => (file ? formatBytes(file.size) : "未选择"), [file]);
 	const textSize = useMemo(() => formatBytes(new TextEncoder().encode(textContent).length), [textContent]);
@@ -92,6 +104,7 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 		gooeyToast.dismiss();
 		setUploadResult(null);
 		setTextPreview(null);
+		setPickupAccessToken("");
 
 		if (!isTextUploadFile(nextFile)) {
 			notify("请拖入文本文件。", "warning");
@@ -207,6 +220,7 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 		setPickupCode(code);
 		setDelivery(null);
 		setTextPreview(null);
+		setPickupAccessToken("");
 		gooeyToast.dismiss();
 
 		if (code.length !== PICKUP_CODE_LENGTH) {
@@ -215,29 +229,45 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 		}
 
 		setBusy("lookup");
+		setPowStatus("正在完成人机校验...");
 		try {
-			const response = await fetch(`/api/deliveries/${encodeURIComponent(code)}`);
-			const data = await readApiJson<ApiError & { delivery: Delivery }>(response, "查询失败。");
+			const capToken = await solvePowToken((progress) => {
+				setPowStatus(`正在完成人机校验 ${Math.round(progress)}%`);
+			});
+			setPowStatus("正在查询取件码...");
+			const response = await fetch(`/api/deliveries/${encodeURIComponent(code)}`, {
+				headers: {
+					"x-cap-token": capToken,
+				},
+			});
+			const data = await readApiJson<ApiError & DeliveryLookupResult>(response, "查询失败。");
 			if (!response.ok) {
 				throw new Error(data.error ?? "没有找到这个文件。");
 			}
 
 			setDelivery(data.delivery);
+			setPickupAccessToken(data.pickupAccessToken);
 			if (data.delivery.kind === "text" && data.delivery.status === "available") {
-				await previewTextDelivery(code);
+				await previewTextDelivery(code, data.pickupAccessToken);
 			}
 			void loadStats();
 		} catch (error) {
 			setDelivery(null);
 			setTextPreview(null);
+			setPickupAccessToken("");
 			notify(error instanceof Error ? error.message : "查询失败。", "error");
 		} finally {
+			setPowStatus("");
 			setBusy(null);
 		}
 	}
 
-	async function previewTextDelivery(code: string) {
-		const response = await fetch(`/api/deliveries/${encodeURIComponent(code)}/preview`);
+	async function previewTextDelivery(code: string, accessToken: string) {
+		const response = await fetch(`/api/deliveries/${encodeURIComponent(code)}/preview`, {
+			headers: {
+				"x-pickup-access-token": accessToken,
+			},
+		});
 		const data = await readApiJson<ApiError & TextPreview>(response, "文本预览失败。");
 		if (!response.ok) {
 			throw new Error(data.error ?? "文本预览失败。");
@@ -247,6 +277,33 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 			text: data.text,
 			remainingDownloads: data.remainingDownloads,
 		});
+	}
+
+	async function solvePowToken(onProgress: (progress: number) => void) {
+		capProgressRef.current = onProgress;
+		const { default: Cap } = await import("cap-widget");
+		const cap = new Cap({
+			apiEndpoint: "/api/pow/",
+			"data-cap-worker-count": "1",
+			"data-cap-i18n-initial-state": "人机校验",
+			"data-cap-i18n-verifying-label": "正在校验...",
+			"data-cap-i18n-solved-label": "校验通过",
+			"data-cap-i18n-error-label": "校验失败",
+		});
+		const handleProgress = (event: CustomEvent<{ progress: number }>) => capProgressRef.current(event.detail.progress);
+		cap.addEventListener("progress", handleProgress as EventListener);
+
+		try {
+			const result = await cap.solve();
+			if (!result.success || !result.token) {
+				throw new Error("人机校验失败，请重试。");
+			}
+
+			return result.token;
+		} finally {
+			cap.reset();
+			cap.widget.remove();
+		}
 	}
 
 	async function loadStats() {
@@ -295,6 +352,43 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 		}
 	}
 
+	async function downloadDelivery() {
+		const code = normalizePickupCode(pickupCode);
+		if (!delivery || !pickupAccessToken || code.length !== PICKUP_CODE_LENGTH) {
+			notify("请先查询有效取件码。", "warning");
+			return;
+		}
+
+		setBusy("download");
+		gooeyToast.dismiss();
+		try {
+			const response = await fetch(`/api/deliveries/${encodeURIComponent(code)}/download`, {
+				headers: {
+					"x-pickup-access-token": pickupAccessToken,
+				},
+			});
+			if (!response.ok) {
+				const data = await readApiJson<ApiError>(response, "下载失败。");
+				throw new Error(data.error ?? "下载失败。");
+			}
+
+			const blob = await response.blob();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = getDownloadFileName(response.headers.get("content-disposition"), delivery.fileName);
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+			void loadStats();
+		} catch (error) {
+			notify(error instanceof Error ? error.message : "下载失败。", "error");
+		} finally {
+			setBusy(null);
+		}
+	}
+
 	function copy(value: string) {
 		void navigator.clipboard.writeText(value);
 		notify("已复制。", "success");
@@ -328,10 +422,13 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 						<PickupPanel
 							busy={busy === "lookup"}
 							delivery={delivery}
+							downloading={busy === "download"}
 							pickupCode={pickupCode}
+							pickupAccessToken={pickupAccessToken}
+							powStatus={powStatus}
 							textPreview={textPreview}
 							onCopy={copy}
-							onDownloadStarted={() => void loadStats()}
+							onDownload={downloadDelivery}
 							onPickupCodeChange={setPickupCode}
 							onSubmit={lookupDelivery}
 						/>
@@ -349,4 +446,18 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 			</section>
 		</main>
 	);
+}
+
+function getDownloadFileName(contentDisposition: string | null, fallback: string) {
+	const utf8Match = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i);
+	if (utf8Match?.[1]) {
+		try {
+			return decodeURIComponent(utf8Match[1]);
+		} catch {
+			return fallback;
+		}
+	}
+
+	const asciiMatch = contentDisposition?.match(/filename="([^"]+)"/i);
+	return asciiMatch?.[1] || fallback;
 }

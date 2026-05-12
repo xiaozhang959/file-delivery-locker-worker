@@ -1,7 +1,9 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import Cap from "@cap.js/server";
 
 export const MAX_FILE_SIZE = 100 * 1024 * 1024;
 export const MAX_TEXT_SIZE = 256 * 1024;
+export const PICKUP_CODE_LENGTH = 6;
 export const ALLOWED_EXPIRY_HOURS = new Set([1, 24, 168]);
 export const DELIVERY_KINDS = new Set(["file", "text"]);
 export const MIN_DOWNLOADS = 1;
@@ -10,6 +12,11 @@ export const SITE_AUTH_COOKIE = "file_delivery_locker_site_auth";
 export const SITE_AUTH_MAX_AGE = 60 * 60 * 24 * 7;
 export const ADMIN_AUTH_COOKIE = "file_delivery_locker_admin_auth";
 export const ADMIN_AUTH_MAX_AGE = 60 * 60 * 8;
+export const CAP_CHALLENGE_MAX_AGE_MS = 5 * 60 * 1000;
+export const PICKUP_ACCESS_MAX_AGE_MS = 5 * 60 * 1000;
+export const PICKUP_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+export const PICKUP_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1000;
+const CAP_CHALLENGE_SIZE = 32;
 
 type SiteEnv = {
 	DB: LockerDb;
@@ -42,6 +49,19 @@ export type LockerDb = {
 
 type TableColumnRow = {
 	name: string;
+};
+
+type PickupPowFailureRow = {
+	failure_count: number;
+	window_started_at: number;
+};
+
+type PickupPowDifficulty = {
+	subjectHash: string;
+	failureCount: number;
+	challengeCount: number;
+	challengeSize: number;
+	challengeDifficulty: number;
 };
 
 type LockerR2Object = {
@@ -81,6 +101,97 @@ const fileDeliveryColumns: Record<string, string> = {
 };
 
 let schemaInitializationPromise: Promise<void> | null = null;
+
+const cap = new Cap({
+	noFSState: true,
+	disableAutoCleanup: true,
+	storage: {
+		challenges: {
+			store: async (token, data) => {
+				const db = await getCapStorageDb();
+				await db
+					.prepare(
+						`INSERT OR REPLACE INTO cap_challenges (
+							token,
+							challenge_count,
+							challenge_size,
+							challenge_difficulty,
+							expires_at,
+							created_at
+						) VALUES (?, ?, ?, ?, ?, ?)`,
+					)
+					.bind(token, data.challenge.c, data.challenge.s, data.challenge.d, data.expires, Date.now())
+					.run();
+			},
+			read: async (token) => {
+				const db = await getCapStorageDb();
+				const row = await db
+					.prepare(
+						`SELECT
+							challenge_count,
+							challenge_size,
+							challenge_difficulty,
+							expires_at
+						FROM cap_challenges
+						WHERE token = ?`,
+					)
+					.bind(token)
+					.first<{
+						challenge_count: number;
+						challenge_size: number;
+						challenge_difficulty: number;
+						expires_at: number;
+					}>();
+
+				if (!row) {
+					return null;
+				}
+
+				return {
+					challenge: {
+						c: Number(row.challenge_count),
+						s: Number(row.challenge_size),
+						d: Number(row.challenge_difficulty),
+					},
+					expires: Number(row.expires_at),
+				};
+			},
+			delete: async (token) => {
+				const db = await getCapStorageDb();
+				await db.prepare("DELETE FROM cap_challenges WHERE token = ?").bind(token).run();
+			},
+			deleteExpired: async () => {
+				const db = await getCapStorageDb();
+				await deleteExpiredCapArtifacts(db, Date.now());
+			},
+		},
+		tokens: {
+			store: async (tokenKey, expires) => {
+				const db = await getCapStorageDb();
+				await db
+					.prepare("INSERT OR REPLACE INTO cap_tokens (token_key, expires_at, created_at) VALUES (?, ?, ?)")
+					.bind(tokenKey, expires, Date.now())
+					.run();
+			},
+			get: async (tokenKey) => {
+				const db = await getCapStorageDb();
+				const row = await db
+					.prepare("SELECT expires_at FROM cap_tokens WHERE token_key = ?")
+					.bind(tokenKey)
+					.first<{ expires_at: number }>();
+				return row ? Number(row.expires_at) : null;
+			},
+			delete: async (tokenKey) => {
+				const db = await getCapStorageDb();
+				await db.prepare("DELETE FROM cap_tokens WHERE token_key = ?").bind(tokenKey).run();
+			},
+			deleteExpired: async () => {
+				const db = await getCapStorageDb();
+				await deleteExpiredCapArtifacts(db, Date.now());
+			},
+		},
+	},
+});
 
 export type DeliveryKind = "file" | "text";
 
@@ -232,6 +343,51 @@ async function initializeDatabaseSchema(db: LockerDb) {
 		)
 		.run();
 
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS cap_challenges (
+				token TEXT PRIMARY KEY,
+				challenge_count INTEGER NOT NULL,
+				challenge_size INTEGER NOT NULL,
+				challenge_difficulty INTEGER NOT NULL,
+				expires_at INTEGER NOT NULL,
+				created_at INTEGER NOT NULL
+			)`,
+		)
+		.run();
+
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS cap_tokens (
+				token_key TEXT PRIMARY KEY,
+				expires_at INTEGER NOT NULL,
+				created_at INTEGER NOT NULL
+			)`,
+		)
+		.run();
+
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS pickup_pow_failures (
+				subject_hash TEXT PRIMARY KEY,
+				failure_count INTEGER NOT NULL,
+				window_started_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)`,
+		)
+		.run();
+
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS pickup_access_tokens (
+				token_hash TEXT PRIMARY KEY,
+				pickup_code_hash TEXT NOT NULL,
+				expires_at INTEGER NOT NULL,
+				created_at INTEGER NOT NULL
+			)`,
+		)
+		.run();
+
 	await createDatabaseIndexes(db);
 }
 
@@ -265,11 +421,27 @@ async function createDatabaseIndexes(db: LockerDb) {
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_delivery_id ON delivery_events (delivery_id, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_created_at ON delivery_events (created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_action ON delivery_events (action)",
+		"CREATE INDEX IF NOT EXISTS idx_cap_challenges_expires_at ON cap_challenges (expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_cap_tokens_expires_at ON cap_tokens (expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_pickup_pow_failures_updated_at ON pickup_pow_failures (updated_at)",
+		"CREATE INDEX IF NOT EXISTS idx_pickup_access_tokens_pickup_code_hash ON pickup_access_tokens (pickup_code_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_pickup_access_tokens_expires_at ON pickup_access_tokens (expires_at)",
 	];
 
 	for (const statement of statements) {
 		await db.prepare(statement).run();
 	}
+}
+
+async function getCapStorageDb() {
+	const { env } = await getCloudflareContext({ async: true });
+	const db = (env as SiteEnv).DB;
+	if (!db) {
+		throw new Error("Cloudflare DB binding is not available.");
+	}
+
+	await ensureDatabaseSchema(db);
+	return db;
 }
 
 export async function getSitePassword() {
@@ -421,6 +593,177 @@ export function json(data: unknown, init?: ResponseInit | number) {
 	});
 }
 
+export async function createPickupPowChallenge(db: LockerDb, request: Request) {
+	const difficulty = await getPickupPowDifficulty(db, request);
+	const challenge = await cap.createChallenge({
+		challengeCount: difficulty.challengeCount,
+		challengeSize: difficulty.challengeSize,
+		challengeDifficulty: difficulty.challengeDifficulty,
+		expiresMs: CAP_CHALLENGE_MAX_AGE_MS,
+	});
+
+	return {
+		...challenge,
+		difficulty,
+	};
+}
+
+export async function redeemPickupPowChallenge(token: string, solutions: number[]) {
+	return cap.redeemChallenge({ token, solutions });
+}
+
+export async function validatePickupPowToken(token: string | null) {
+	if (!token) {
+		return "missing";
+	}
+
+	const result = await cap.validateToken(token);
+	return result.success ? "valid" : "invalid";
+}
+
+export async function getPickupPowDifficulty(db: LockerDb, request: Request): Promise<PickupPowDifficulty> {
+	const subjectHash = await getPickupPowSubjectHash(request);
+	const now = Date.now();
+	const row = await db
+		.prepare(
+			`SELECT failure_count, window_started_at
+			FROM pickup_pow_failures
+			WHERE subject_hash = ?`,
+		)
+		.bind(subjectHash)
+		.first<PickupPowFailureRow>();
+	const failureCount =
+		row && now - Number(row.window_started_at) <= PICKUP_FAILURE_WINDOW_MS ? Number(row.failure_count) : 0;
+	const tier = getPickupPowTier(failureCount);
+
+	return {
+		subjectHash,
+		failureCount,
+		challengeCount: tier.challengeCount,
+		challengeSize: CAP_CHALLENGE_SIZE,
+		challengeDifficulty: tier.challengeDifficulty,
+	};
+}
+
+export async function recordPickupPowFailure(db: LockerDb, request: Request, now = Date.now()) {
+	const subjectHash = await getPickupPowSubjectHash(request);
+	const row = await db
+		.prepare(
+			`SELECT failure_count, window_started_at
+			FROM pickup_pow_failures
+			WHERE subject_hash = ?`,
+		)
+		.bind(subjectHash)
+		.first<PickupPowFailureRow>();
+	const currentWindowStartedAt = Number(row?.window_started_at ?? now);
+	const isCurrentWindow = row !== null && now - currentWindowStartedAt <= PICKUP_FAILURE_WINDOW_MS;
+	const nextFailureCount = isCurrentWindow ? Number(row.failure_count) + 1 : 1;
+	const nextWindowStartedAt = isCurrentWindow ? currentWindowStartedAt : now;
+
+	await db
+		.prepare(
+			`INSERT INTO pickup_pow_failures (
+				subject_hash,
+				failure_count,
+				window_started_at,
+				updated_at
+			) VALUES (?, ?, ?, ?)
+			ON CONFLICT(subject_hash) DO UPDATE SET
+				failure_count = excluded.failure_count,
+				window_started_at = excluded.window_started_at,
+				updated_at = excluded.updated_at`,
+		)
+		.bind(subjectHash, nextFailureCount, nextWindowStartedAt, now)
+		.run();
+
+	return nextFailureCount;
+}
+
+export async function clearPickupPowFailure(db: LockerDb, request: Request) {
+	const subjectHash = await getPickupPowSubjectHash(request);
+	await db.prepare("DELETE FROM pickup_pow_failures WHERE subject_hash = ?").bind(subjectHash).run();
+}
+
+export async function createPickupAccessToken(db: LockerDb, pickupCodeHash: string, now = Date.now()) {
+	const token = createCode(16);
+	await db
+		.prepare(
+			`INSERT INTO pickup_access_tokens (
+				token_hash,
+				pickup_code_hash,
+				expires_at,
+				created_at
+			) VALUES (?, ?, ?, ?)`,
+		)
+		.bind(await hashPickupAccessToken(token), pickupCodeHash, now + PICKUP_ACCESS_MAX_AGE_MS, now)
+		.run();
+
+	return {
+		token,
+		expiresAt: new Date(now + PICKUP_ACCESS_MAX_AGE_MS).toISOString(),
+	};
+}
+
+export async function isPickupAccessTokenValid(db: LockerDb, pickupCodeHash: string, token: string | null, now = Date.now()) {
+	if (!token) {
+		return false;
+	}
+
+	const row = await db
+		.prepare(
+			`SELECT token_hash
+			FROM pickup_access_tokens
+			WHERE token_hash = ?
+				AND pickup_code_hash = ?
+				AND expires_at > ?`,
+		)
+		.bind(await hashPickupAccessToken(token), pickupCodeHash, now)
+		.first<{ token_hash: string }>();
+
+	return row !== null;
+}
+
+export async function cleanupPowArtifacts(db: LockerDb, now = Date.now()) {
+	await deleteExpiredCapArtifacts(db, now);
+	await db.prepare("DELETE FROM pickup_access_tokens WHERE expires_at <= ?").bind(now).run();
+	await db.prepare("DELETE FROM pickup_pow_failures WHERE updated_at <= ?").bind(now - PICKUP_FAILURE_RETENTION_MS).run();
+}
+
+async function deleteExpiredCapArtifacts(db: LockerDb, now: number) {
+	await db.prepare("DELETE FROM cap_challenges WHERE expires_at <= ?").bind(now).run();
+	await db.prepare("DELETE FROM cap_tokens WHERE expires_at <= ?").bind(now).run();
+}
+
+async function getPickupPowSubjectHash(request: Request) {
+	const ip = getRequestIp(request) ?? "unknown";
+	const userAgent = request.headers.get("user-agent")?.slice(0, 500) ?? "";
+	return hashText(`pickup-pow:${ip}\n${userAgent}`);
+}
+
+function getPickupPowTier(failureCount: number) {
+	if (failureCount >= 11) {
+		return { challengeCount: 200, challengeDifficulty: 5 };
+	}
+
+	if (failureCount >= 7) {
+		return { challengeCount: 120, challengeDifficulty: 5 };
+	}
+
+	if (failureCount >= 4) {
+		return { challengeCount: 80, challengeDifficulty: 4 };
+	}
+
+	if (failureCount >= 2) {
+		return { challengeCount: 40, challengeDifficulty: 4 };
+	}
+
+	return { challengeCount: 20, challengeDifficulty: 3 };
+}
+
+async function hashPickupAccessToken(token: string) {
+	return hashText(`pickup-access:${token}`);
+}
+
 export function getRequestSource(request: Request): RequestSource {
 	const userAgent = request.headers.get("user-agent")?.slice(0, 500) || null;
 	const cloudflareContext = (request as Request & { cf?: { country?: string; region?: string; city?: string } }).cf;
@@ -561,10 +904,22 @@ export function createPickupCode() {
 	let code = "";
 
 	do {
-		code = Array.from({ length: 6 }, () => alphabet[randomIndex(alphabet.length)]).join("");
+		code = Array.from({ length: PICKUP_CODE_LENGTH }, () => alphabet[randomIndex(alphabet.length)]).join("");
 	} while (!/[A-Z]/.test(code) || !/[0-9]/.test(code));
 
 	return code;
+}
+
+export function normalizePickupCode(value: string) {
+	return value
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "")
+		.slice(0, PICKUP_CODE_LENGTH);
+}
+
+export function isValidPickupCode(value: string) {
+	return /^[A-Z0-9]{6}$/.test(value.trim().toUpperCase());
 }
 
 export async function hashCode(code: string) {
