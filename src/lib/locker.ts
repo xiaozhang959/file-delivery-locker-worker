@@ -12,9 +12,56 @@ export const ADMIN_AUTH_COOKIE = "file_delivery_locker_admin_auth";
 export const ADMIN_AUTH_MAX_AGE = 60 * 60 * 8;
 
 type SiteEnv = CloudflareEnv & {
+	DB: LockerDb;
+	FILE_BUCKET: LockerBucket;
 	SITE_PASSWORD?: string;
 	ADMIN_PASSWORD?: string;
 	DEMO_MODE?: string;
+};
+
+type LockerD1RunResult = {
+	meta: {
+		changes?: number | null;
+	};
+};
+
+type LockerD1AllResult<T> = {
+	results?: T[];
+};
+
+type LockerD1Statement = {
+	bind(...values: unknown[]): LockerD1Statement;
+	first<T = Record<string, unknown>>(): Promise<T | null>;
+	all<T = Record<string, unknown>>(): Promise<LockerD1AllResult<T>>;
+	run(): Promise<LockerD1RunResult>;
+};
+
+export type LockerDb = {
+	prepare(query: string): LockerD1Statement;
+};
+
+type LockerR2Object = {
+	body: ReadableStream<Uint8Array>;
+	size: number;
+	httpMetadata?: {
+		contentType?: string;
+	};
+	httpEtag: string;
+	text(): Promise<string>;
+};
+
+type LockerR2PutOptions = {
+	httpMetadata?: {
+		contentDisposition?: string;
+		contentType?: string;
+	};
+	customMetadata?: Record<string, string>;
+};
+
+export type LockerBucket = {
+	get(key: string): Promise<LockerR2Object | null>;
+	put(key: string, value: ReadableStream | ArrayBuffer, options?: LockerR2PutOptions): Promise<unknown>;
+	delete(key: string): Promise<void>;
 };
 
 export type DeliveryKind = "file" | "text";
@@ -88,16 +135,13 @@ export async function getCloudflareBindings() {
 	const { env, ctx } = await getCloudflareContext({ async: true });
 	const siteEnv = env as SiteEnv;
 	return {
-		db: env.DB,
-		bucket: env.FILE_BUCKET,
+		db: siteEnv.DB,
+		bucket: siteEnv.FILE_BUCKET,
 		sitePassword: normalizeSitePassword(siteEnv.SITE_PASSWORD),
 		demoMode: isDemoModeEnabled(siteEnv.DEMO_MODE),
 		ctx,
 	};
 }
-
-export type LockerDb = NonNullable<Awaited<ReturnType<typeof getCloudflareBindings>>["db"]>;
-export type LockerBucket = NonNullable<Awaited<ReturnType<typeof getCloudflareBindings>>["bucket"]>;
 
 export async function getSitePassword() {
 	const { env } = await getCloudflareContext({ async: true });
