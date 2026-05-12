@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ADMIN_AUTH_COOKIE, getAdminPassword, getDemoMode, isAdminAuthTokenValid } from "@/lib/locker";
+import { ADMIN_AUTH_COOKIE, getAdminAuthSession, getAdminPassword, getDemoMode } from "@/lib/locker";
 import AdminApp from "./admin-app";
 import AdminLogin from "./admin-login";
 
@@ -11,10 +11,6 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
 	const demoMode = await getDemoMode();
-	if (demoMode) {
-		return <AdminApp demoMode={demoMode} />;
-	}
-
 	const adminPassword = await getAdminPassword();
 	if (!adminPassword) {
 		return (
@@ -31,11 +27,11 @@ export default async function AdminPage() {
 
 	const cookieStore = await cookies();
 	const token = cookieStore.get(ADMIN_AUTH_COOKIE)?.value;
-	const authorized = await isAdminAuthTokenValid(adminPassword, token);
+	const session = await getAdminAuthSession(adminPassword, token);
 
-	if (!authorized) {
+	if (!session.valid) {
 		return <AdminLogin />;
 	}
 
-	return <AdminApp demoMode={demoMode} />;
+	return <AdminApp csrfToken={session.csrfToken ?? ""} demoMode={demoMode} />;
 }

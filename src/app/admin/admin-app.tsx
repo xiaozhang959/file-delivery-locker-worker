@@ -82,10 +82,11 @@ const kindOptions = [
 ];
 
 type AdminAppProps = {
+	csrfToken: string;
 	demoMode?: boolean;
 };
 
-export default function AdminApp({ demoMode = false }: AdminAppProps) {
+export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps) {
 	const [deliveries, setDeliveries] = useState<AdminDelivery[]>([]);
 	const [events, setEvents] = useState<DeliveryEvent[]>([]);
 	const [eventDelivery, setEventDelivery] = useState<AdminDelivery | null>(null);
@@ -200,6 +201,7 @@ export default function AdminApp({ demoMode = false }: AdminAppProps) {
 		try {
 			const response = await fetch(`/api/admin/deliveries/${encodeURIComponent(delivery.id)}/revoke`, {
 				method: "POST",
+				headers: csrfHeaders(csrfToken),
 			});
 			const data = await readApiJson<ApiError>(response, "撤回失败。");
 			if (!response.ok) {
@@ -252,6 +254,7 @@ export default function AdminApp({ demoMode = false }: AdminAppProps) {
 				method: "PATCH",
 				headers: {
 					"content-type": "application/json",
+					...csrfHeaders(csrfToken),
 				},
 				body: JSON.stringify({ maxDownloads, downloadCount }),
 			});
@@ -504,6 +507,10 @@ export default function AdminApp({ demoMode = false }: AdminAppProps) {
 			) : null}
 		</main>
 	);
+}
+
+function csrfHeaders(csrfToken: string): Record<string, string> {
+	return csrfToken ? { "x-csrf-token": csrfToken } : {};
 }
 
 function AdminModal({

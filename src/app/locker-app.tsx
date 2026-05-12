@@ -33,10 +33,11 @@ function isTextUploadFile(nextFile: File) {
 }
 
 type LockerAppProps = {
+	csrfToken?: string | null;
 	demoMode?: boolean;
 };
 
-export default function LockerApp({ demoMode = false }: LockerAppProps) {
+export default function LockerApp({ csrfToken = null, demoMode = false }: LockerAppProps) {
 	const [deliveryMode, setDeliveryMode] = useState<DeliveryKind>("file");
 	const [file, setFile] = useState<File | null>(null);
 	const [textContent, setTextContent] = useState("");
@@ -189,6 +190,7 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 				method: "POST",
 				headers: {
 					"content-type": contentType,
+					...csrfHeaders(csrfToken),
 					"x-content-type": contentType,
 					"x-delivery-kind": deliveryMode,
 					"x-expires-in-hours": String(expiresInHours),
@@ -337,6 +339,7 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 		try {
 			const response = await fetch(`/api/deliveries/manage/${encodeURIComponent(code)}`, {
 				method: "DELETE",
+				headers: csrfHeaders(csrfToken),
 			});
 			const data = await readApiJson<ApiError>(response, "撤回失败。");
 			if (!response.ok) {
@@ -446,6 +449,10 @@ export default function LockerApp({ demoMode = false }: LockerAppProps) {
 			</section>
 		</main>
 	);
+}
+
+function csrfHeaders(csrfToken?: string | null): Record<string, string> {
+	return csrfToken ? { "x-csrf-token": csrfToken } : {};
 }
 
 function getDownloadFileName(contentDisposition: string | null, fallback: string) {

@@ -27,6 +27,10 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 		return json({ error: "Cloudflare bindings are not available." }, 500);
 	}
 
+	if (demoMode) {
+		return json({ error: "Demo mode does not expose stored content." }, 403);
+	}
+
 	const { pickupCode } = await context.params;
 	if (!isValidPickupCode(pickupCode)) {
 		return json({ error: "Invalid pickup code." }, 400);

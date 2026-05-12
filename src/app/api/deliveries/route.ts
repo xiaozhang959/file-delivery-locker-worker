@@ -15,6 +15,7 @@ import {
 	parseExpiryHours,
 	parseMaxDownloads,
 	recordDeliveryEvent,
+	requireCsrf,
 	requireWritableMode,
 	requireSiteAuth,
 } from "@/lib/locker";
@@ -33,6 +34,11 @@ export async function POST(request: Request) {
 	const unauthorized = await requireSiteAuth(request);
 	if (unauthorized) {
 		return unauthorized;
+	}
+
+	const csrf = await requireCsrf(request, "site");
+	if (csrf) {
+		return csrf;
 	}
 
 	const { db, bucket } = await getCloudflareBindings();

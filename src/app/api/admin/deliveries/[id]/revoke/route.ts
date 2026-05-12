@@ -5,6 +5,7 @@ import {
 	json,
 	recordDeliveryEvent,
 	requireAdminAuth,
+	requireCsrf,
 	requireWritableMode,
 } from "@/lib/locker";
 
@@ -17,6 +18,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 	const unauthorized = await requireAdminAuth(request);
 	if (unauthorized) {
 		return unauthorized;
+	}
+
+	const csrf = await requireCsrf(request, "admin");
+	if (csrf) {
+		return csrf;
 	}
 
 	const { db, bucket } = await getCloudflareBindings();

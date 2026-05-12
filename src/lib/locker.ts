@@ -9,13 +9,20 @@ export const DELIVERY_KINDS = new Set(["file", "text"]);
 export const MIN_DOWNLOADS = 1;
 export const MAX_DOWNLOADS = 10;
 export const SITE_AUTH_COOKIE = "file_delivery_locker_site_auth";
+export const SITE_CSRF_COOKIE = "file_delivery_locker_site_csrf";
 export const SITE_AUTH_MAX_AGE = 60 * 60 * 24 * 7;
 export const ADMIN_AUTH_COOKIE = "file_delivery_locker_admin_auth";
+export const ADMIN_CSRF_COOKIE = "file_delivery_locker_admin_csrf";
 export const ADMIN_AUTH_MAX_AGE = 60 * 60 * 8;
 export const CAP_CHALLENGE_MAX_AGE_MS = 5 * 60 * 1000;
 export const PICKUP_ACCESS_MAX_AGE_MS = 5 * 60 * 1000;
 export const PICKUP_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const PICKUP_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1000;
+export const AUTH_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+export const AUTH_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1000;
+const AUTH_LOCK_THRESHOLD = 5;
+const AUTH_LOCK_BASE_MS = 60 * 1000;
+const AUTH_LOCK_MAX_MS = 15 * 60 * 1000;
 const CAP_CHALLENGE_SIZE = 32;
 
 type SiteEnv = {
@@ -62,6 +69,30 @@ type PickupPowDifficulty = {
 	challengeCount: number;
 	challengeSize: number;
 	challengeDifficulty: number;
+};
+
+type AuthKind = "site" | "admin";
+
+type AuthLoginFailureRow = {
+	failure_count: number;
+	window_started_at: number;
+	locked_until: number | null;
+};
+
+export type AuthSession = {
+	token: string;
+	csrfToken: string;
+	expiresAt: string;
+};
+
+export type AuthSessionValidation = {
+	valid: boolean;
+	csrfToken: string | null;
+};
+
+export type AuthLockStatus = {
+	locked: boolean;
+	retryAfterSeconds: number;
 };
 
 type LockerR2Object = {
@@ -388,6 +419,34 @@ async function initializeDatabaseSchema(db: LockerDb) {
 		)
 		.run();
 
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS auth_sessions (
+				token_hash TEXT PRIMARY KEY,
+				auth_kind TEXT NOT NULL,
+				password_hash TEXT NOT NULL,
+				csrf_token TEXT NOT NULL,
+				expires_at INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				ip TEXT,
+				user_agent TEXT
+			)`,
+		)
+		.run();
+
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS auth_login_failures (
+				subject_hash TEXT PRIMARY KEY,
+				auth_kind TEXT NOT NULL,
+				failure_count INTEGER NOT NULL,
+				window_started_at INTEGER NOT NULL,
+				locked_until INTEGER,
+				updated_at INTEGER NOT NULL
+			)`,
+		)
+		.run();
+
 	await createDatabaseIndexes(db);
 }
 
@@ -426,6 +485,10 @@ async function createDatabaseIndexes(db: LockerDb) {
 		"CREATE INDEX IF NOT EXISTS idx_pickup_pow_failures_updated_at ON pickup_pow_failures (updated_at)",
 		"CREATE INDEX IF NOT EXISTS idx_pickup_access_tokens_pickup_code_hash ON pickup_access_tokens (pickup_code_hash)",
 		"CREATE INDEX IF NOT EXISTS idx_pickup_access_tokens_expires_at ON pickup_access_tokens (expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_auth_sessions_auth_kind ON auth_sessions (auth_kind, expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions (expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_auth_login_failures_auth_kind ON auth_login_failures (auth_kind, updated_at)",
+		"CREATE INDEX IF NOT EXISTS idx_auth_login_failures_updated_at ON auth_login_failures (updated_at)",
 	];
 
 	for (const statement of statements) {
@@ -469,23 +532,41 @@ export function isSiteLockEnabled(sitePassword: string | null) {
 }
 
 export async function isSiteAuthTokenValid(sitePassword: string | null, token?: string | null) {
+	return (await getSiteAuthSession(sitePassword, token)).valid;
+}
+
+export async function getSiteAuthSession(sitePassword: string | null, token?: string | null): Promise<AuthSessionValidation> {
 	if (!isSiteLockEnabled(sitePassword)) {
-		return true;
+		return { valid: true, csrfToken: null };
 	}
 
 	if (!token) {
-		return false;
+		return { valid: false, csrfToken: null };
 	}
 
-	return token === (await createSiteAuthToken(sitePassword));
+	const { db } = await getCloudflareBindings();
+	if (!db) {
+		return { valid: false, csrfToken: null };
+	}
+
+	return validateAuthSession(db, "site", sitePassword, token);
 }
 
 export async function isAdminAuthTokenValid(adminPassword: string | null, token?: string | null) {
+	return (await getAdminAuthSession(adminPassword, token)).valid;
+}
+
+export async function getAdminAuthSession(adminPassword: string | null, token?: string | null): Promise<AuthSessionValidation> {
 	if (!adminPassword || !token) {
-		return false;
+		return { valid: false, csrfToken: null };
 	}
 
-	return token === (await createAdminAuthToken(adminPassword));
+	const { db } = await getCloudflareBindings();
+	if (!db) {
+		return { valid: false, csrfToken: null };
+	}
+
+	return validateAuthSession(db, "admin", adminPassword, token);
 }
 
 export async function isSiteRequestAuthorized(request: Request) {
@@ -498,10 +579,6 @@ export async function isSiteRequestAuthorized(request: Request) {
 }
 
 export async function isAdminRequestAuthorized(request: Request) {
-	if (await getDemoMode()) {
-		return true;
-	}
-
 	const adminPassword = await getAdminPassword();
 	return isAdminAuthTokenValid(adminPassword, getCookieValue(request.headers.get("cookie"), ADMIN_AUTH_COOKIE));
 }
@@ -515,10 +592,6 @@ export async function requireSiteAuth(request: Request) {
 }
 
 export async function requireAdminAuth(request: Request) {
-	if (await getDemoMode()) {
-		return null;
-	}
-
 	const adminPassword = await getAdminPassword();
 	if (!adminPassword) {
 		return json({ error: "Admin password is not configured." }, 503);
@@ -531,6 +604,44 @@ export async function requireAdminAuth(request: Request) {
 	return json({ error: "Admin password is required." }, 401);
 }
 
+export async function requireCsrf(request: Request, kind: AuthKind) {
+	if (isSafeHttpMethod(request.method)) {
+		return null;
+	}
+
+	const password = kind === "site" ? await getSitePassword() : await getAdminPassword();
+	if (kind === "site" && !isSiteLockEnabled(password)) {
+		return null;
+	}
+
+	if (!password) {
+		return json({ error: "Authentication is not configured." }, 503);
+	}
+
+	const cookieHeader = request.headers.get("cookie");
+	const authCookieName = kind === "site" ? SITE_AUTH_COOKIE : ADMIN_AUTH_COOKIE;
+	const csrfCookieName = kind === "site" ? SITE_CSRF_COOKIE : ADMIN_CSRF_COOKIE;
+	const authToken = getCookieValue(cookieHeader, authCookieName);
+	const csrfCookie = getCookieValue(cookieHeader, csrfCookieName);
+	const csrfHeader = request.headers.get("x-csrf-token");
+
+	if (!authToken || !csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+		return json({ error: "CSRF token is required." }, 403);
+	}
+
+	const { db } = await getCloudflareBindings();
+	if (!db) {
+		return json({ error: "Cloudflare bindings are not available." }, 500);
+	}
+
+	const session = await validateAuthSession(db, kind, password, authToken);
+	if (!session.valid || session.csrfToken !== csrfHeader) {
+		return json({ error: "CSRF token is invalid or expired." }, 403);
+	}
+
+	return null;
+}
+
 export async function requireWritableMode() {
 	if (await getDemoMode()) {
 		return json({ error: "Demo mode is read-only." }, 403);
@@ -539,23 +650,157 @@ export async function requireWritableMode() {
 	return null;
 }
 
-export async function createSiteAuthToken(sitePassword: string) {
-	return hashText(`file-delivery-locker-worker:${sitePassword}`);
+export async function createSiteAuthSession(db: LockerDb, sitePassword: string, request: Request, now = Date.now()) {
+	return createAuthSession(db, "site", sitePassword, request, now);
 }
 
-export async function createAdminAuthToken(adminPassword: string) {
-	return hashText(`file-delivery-locker-worker:admin:${adminPassword}`);
+export async function createAdminAuthSession(db: LockerDb, adminPassword: string, request: Request, now = Date.now()) {
+	return createAuthSession(db, "admin", adminPassword, request, now);
 }
 
-export function serializeSiteAuthCookie(token: string, requestUrl: string) {
+export async function isSecretEqual(input: string, expected: string) {
+	const [inputBytes, expectedBytes] = await Promise.all([
+		secretDigestBytes(input),
+		secretDigestBytes(expected),
+	]);
+	let difference = inputBytes.length ^ expectedBytes.length;
+
+	for (let index = 0; index < Math.max(inputBytes.length, expectedBytes.length); index += 1) {
+		difference |= (inputBytes[index] ?? 0) ^ (expectedBytes[index] ?? 0);
+	}
+
+	return difference === 0;
+}
+
+export async function getAuthLockStatus(db: LockerDb, kind: AuthKind, request: Request, now = Date.now()): Promise<AuthLockStatus> {
+	const subjectHash = await getAuthSubjectHash(kind, request);
+	const row = await db
+		.prepare(
+			`SELECT failure_count, window_started_at, locked_until
+			FROM auth_login_failures
+			WHERE subject_hash = ?`,
+		)
+		.bind(subjectHash)
+		.first<AuthLoginFailureRow>();
+
+	if (!row) {
+		return { locked: false, retryAfterSeconds: 0 };
+	}
+
+	const windowExpired = now - Number(row.window_started_at) > AUTH_FAILURE_WINDOW_MS;
+	const lockedUntil = Number(row.locked_until ?? 0);
+	if (windowExpired || lockedUntil <= now) {
+		return { locked: false, retryAfterSeconds: 0 };
+	}
+
+	return {
+		locked: true,
+		retryAfterSeconds: Math.max(1, Math.ceil((lockedUntil - now) / 1000)),
+	};
+}
+
+export async function recordAuthFailure(db: LockerDb, kind: AuthKind, request: Request, now = Date.now()) {
+	const subjectHash = await getAuthSubjectHash(kind, request);
+	const row = await db
+		.prepare(
+			`SELECT failure_count, window_started_at
+			FROM auth_login_failures
+			WHERE subject_hash = ?`,
+		)
+		.bind(subjectHash)
+		.first<AuthLoginFailureRow>();
+	const currentWindowStartedAt = Number(row?.window_started_at ?? now);
+	const isCurrentWindow = row !== null && now - currentWindowStartedAt <= AUTH_FAILURE_WINDOW_MS;
+	const nextFailureCount = isCurrentWindow ? Number(row.failure_count) + 1 : 1;
+	const nextWindowStartedAt = isCurrentWindow ? currentWindowStartedAt : now;
+	const lockedUntil =
+		nextFailureCount >= AUTH_LOCK_THRESHOLD
+			? now + Math.min(AUTH_LOCK_MAX_MS, AUTH_LOCK_BASE_MS * 2 ** (nextFailureCount - AUTH_LOCK_THRESHOLD))
+			: null;
+
+	await db
+		.prepare(
+			`INSERT INTO auth_login_failures (
+				subject_hash,
+				auth_kind,
+				failure_count,
+				window_started_at,
+				locked_until,
+				updated_at
+			) VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT(subject_hash) DO UPDATE SET
+				auth_kind = excluded.auth_kind,
+				failure_count = excluded.failure_count,
+				window_started_at = excluded.window_started_at,
+				locked_until = excluded.locked_until,
+				updated_at = excluded.updated_at`,
+		)
+		.bind(subjectHash, kind, nextFailureCount, nextWindowStartedAt, lockedUntil, now)
+		.run();
+
+	return {
+		failureCount: nextFailureCount,
+		lockedUntil,
+		retryAfterSeconds: lockedUntil ? Math.max(1, Math.ceil((lockedUntil - now) / 1000)) : 0,
+	};
+}
+
+export async function clearAuthFailures(db: LockerDb, kind: AuthKind, request: Request) {
+	const subjectHash = await getAuthSubjectHash(kind, request);
+	await db.prepare("DELETE FROM auth_login_failures WHERE subject_hash = ?").bind(subjectHash).run();
+}
+
+export async function cleanupAuthArtifacts(db: LockerDb, now = Date.now()) {
+	await db.prepare("DELETE FROM auth_sessions WHERE expires_at <= ?").bind(now).run();
+	await db.prepare("DELETE FROM auth_login_failures WHERE updated_at <= ?").bind(now - AUTH_FAILURE_RETENTION_MS).run();
+}
+
+export function serializeSiteAuthCookies(session: AuthSession, requestUrl: string) {
+	return serializeAuthCookies("site", session, requestUrl);
+}
+
+export function serializeAdminAuthCookies(session: AuthSession, requestUrl: string) {
+	return serializeAuthCookies("admin", session, requestUrl);
+}
+
+function serializeAuthCookies(kind: AuthKind, session: AuthSession, requestUrl: string) {
+	const authCookieName = kind === "site" ? SITE_AUTH_COOKIE : ADMIN_AUTH_COOKIE;
+	const csrfCookieName = kind === "site" ? SITE_CSRF_COOKIE : ADMIN_CSRF_COOKIE;
+	const maxAge = kind === "site" ? SITE_AUTH_MAX_AGE : ADMIN_AUTH_MAX_AGE;
+
+	return [
+		serializeCookie(authCookieName, session.token, requestUrl, {
+			httpOnly: true,
+			maxAge,
+		}),
+		serializeCookie(csrfCookieName, session.csrfToken, requestUrl, {
+			httpOnly: false,
+			maxAge,
+		}),
+	];
+}
+
+function serializeCookie(
+	name: string,
+	value: string,
+	requestUrl: string,
+	options: {
+		httpOnly: boolean;
+		maxAge: number;
+	},
+) {
 	const url = new URL(requestUrl);
 	const parts = [
-		`${SITE_AUTH_COOKIE}=${token}`,
+		`${name}=${value}`,
 		"Path=/",
-		"HttpOnly",
 		"SameSite=Lax",
-		`Max-Age=${SITE_AUTH_MAX_AGE}`,
+		`Max-Age=${options.maxAge}`,
+		"Priority=High",
 	];
+
+	if (options.httpOnly) {
+		parts.push("HttpOnly");
+	}
 
 	if (url.protocol === "https:") {
 		parts.push("Secure");
@@ -564,32 +809,86 @@ export function serializeSiteAuthCookie(token: string, requestUrl: string) {
 	return parts.join("; ");
 }
 
-export function serializeAdminAuthCookie(token: string, requestUrl: string) {
-	const url = new URL(requestUrl);
-	const parts = [
-		`${ADMIN_AUTH_COOKIE}=${token}`,
-		"Path=/",
-		"HttpOnly",
-		"SameSite=Lax",
-		`Max-Age=${ADMIN_AUTH_MAX_AGE}`,
-	];
+async function createAuthSession(db: LockerDb, kind: AuthKind, password: string, request: Request, now: number): Promise<AuthSession> {
+	const token = createCode(32);
+	const csrfToken = createCode(16);
+	const expiresAt = now + (kind === "site" ? SITE_AUTH_MAX_AGE : ADMIN_AUTH_MAX_AGE) * 1000;
+	const source = getRequestSource(request);
 
-	if (url.protocol === "https:") {
-		parts.push("Secure");
-	}
+	await db
+		.prepare(
+			`INSERT INTO auth_sessions (
+				token_hash,
+				auth_kind,
+				password_hash,
+				csrf_token,
+				expires_at,
+				created_at,
+				ip,
+				user_agent
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(await hashAuthToken(token), kind, await hashAuthPassword(kind, password), csrfToken, expiresAt, now, source.ip, source.userAgent)
+		.run();
 
-	return parts.join("; ");
+	return {
+		token,
+		csrfToken,
+		expiresAt: new Date(expiresAt).toISOString(),
+	};
+}
+
+async function validateAuthSession(db: LockerDb, kind: AuthKind, password: string, token: string): Promise<AuthSessionValidation> {
+	const now = Date.now();
+	const row = await db
+		.prepare(
+			`SELECT csrf_token
+			FROM auth_sessions
+			WHERE token_hash = ?
+				AND auth_kind = ?
+				AND password_hash = ?
+				AND expires_at > ?`,
+		)
+		.bind(await hashAuthToken(token), kind, await hashAuthPassword(kind, password), now)
+		.first<{ csrf_token: string }>();
+
+	return {
+		valid: row !== null,
+		csrfToken: row?.csrf_token ?? null,
+	};
+}
+
+async function hashAuthToken(token: string) {
+	return hashText(`auth-session:${token}`);
+}
+
+async function hashAuthPassword(kind: AuthKind, password: string) {
+	return hashText(`auth-password:${kind}:${password}`);
+}
+
+async function getAuthSubjectHash(kind: AuthKind, request: Request) {
+	const ip = getRequestIp(request) ?? "unknown";
+	const userAgent = request.headers.get("user-agent")?.slice(0, 500) ?? "";
+	return hashText(`auth-failure:${kind}:${ip}\n${userAgent}`);
+}
+
+async function secretDigestBytes(value: string) {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+	return new Uint8Array(digest);
+}
+
+function isSafeHttpMethod(method: string) {
+	return method === "GET" || method === "HEAD" || method === "OPTIONS";
 }
 
 export function json(data: unknown, init?: ResponseInit | number) {
 	const responseInit = typeof init === "number" ? { status: init } : init;
+	const headers = new Headers(responseInit?.headers);
+	headers.set("cache-control", "no-store");
 
 	return Response.json(data, {
 		...responseInit,
-		headers: {
-			"cache-control": "no-store",
-			...(responseInit?.headers ?? {}),
-		},
+		headers,
 	});
 }
 
