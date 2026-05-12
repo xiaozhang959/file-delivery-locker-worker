@@ -21,7 +21,7 @@ export default function RootLayout({
 	return (
 		<html lang="zh-CN">
 			<head>
-				<link rel="icon" href="/favicon.icow" type="image/svg+xml"></link>
+				<link rel="icon" href="/favicon.ico" type="image/svg+xml"></link>
 			</head>
 			<body>{children}</body>
 		</html>
