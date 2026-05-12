@@ -40,6 +40,10 @@ export type LockerDb = {
 	prepare(query: string): LockerD1Statement;
 };
 
+type TableColumnRow = {
+	name: string;
+};
+
 type LockerR2Object = {
 	body: ReadableStream<Uint8Array>;
 	size: number;
@@ -63,6 +67,20 @@ export type LockerBucket = {
 	put(key: string, value: ReadableStream | ArrayBuffer, options?: LockerR2PutOptions): Promise<unknown>;
 	delete(key: string): Promise<void>;
 };
+
+const fileDeliveryColumns: Record<string, string> = {
+	delivery_kind: "TEXT NOT NULL DEFAULT 'file'",
+	upload_ip: "TEXT",
+	upload_user_agent: "TEXT",
+	upload_browser: "TEXT",
+	upload_os: "TEXT",
+	upload_device: "TEXT",
+	upload_country: "TEXT",
+	upload_region: "TEXT",
+	upload_city: "TEXT",
+};
+
+let schemaInitializationPromise: Promise<void> | null = null;
 
 export type DeliveryKind = "file" | "text";
 
@@ -134,6 +152,10 @@ export type DeliveryEventInput = {
 export async function getCloudflareBindings() {
 	const { env, ctx } = await getCloudflareContext({ async: true });
 	const siteEnv = env as SiteEnv;
+	if (siteEnv.DB) {
+		await ensureDatabaseSchema(siteEnv.DB);
+	}
+
 	return {
 		db: siteEnv.DB,
 		bucket: siteEnv.FILE_BUCKET,
@@ -141,6 +163,113 @@ export async function getCloudflareBindings() {
 		demoMode: isDemoModeEnabled(siteEnv.DEMO_MODE),
 		ctx,
 	};
+}
+
+export async function ensureDatabaseSchema(db: LockerDb) {
+	schemaInitializationPromise ??= initializeDatabaseSchema(db).catch((error) => {
+		schemaInitializationPromise = null;
+		throw error;
+	});
+
+	return schemaInitializationPromise;
+}
+
+async function initializeDatabaseSchema(db: LockerDb) {
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS file_deliveries (
+				id TEXT PRIMARY KEY,
+				object_key TEXT NOT NULL UNIQUE,
+				file_name TEXT NOT NULL,
+				content_type TEXT NOT NULL,
+				size INTEGER NOT NULL,
+				pickup_code_hash TEXT NOT NULL UNIQUE,
+				manage_code_hash TEXT NOT NULL UNIQUE,
+				max_downloads INTEGER NOT NULL,
+				download_count INTEGER NOT NULL DEFAULT 0,
+				expires_at INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				deleted_at INTEGER,
+				deleted_reason TEXT,
+				delivery_kind TEXT NOT NULL DEFAULT 'file',
+				upload_ip TEXT,
+				upload_user_agent TEXT,
+				upload_browser TEXT,
+				upload_os TEXT,
+				upload_device TEXT,
+				upload_country TEXT,
+				upload_region TEXT,
+				upload_city TEXT
+			)`,
+		)
+		.run();
+
+	await ensureFileDeliveryColumns(db);
+
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS delivery_events (
+				id TEXT PRIMARY KEY,
+				delivery_id TEXT NOT NULL,
+				action TEXT NOT NULL,
+				actor TEXT NOT NULL,
+				ip TEXT,
+				user_agent TEXT,
+				browser TEXT,
+				os TEXT,
+				device TEXT,
+				country TEXT,
+				region TEXT,
+				city TEXT,
+				note TEXT,
+				previous_max_downloads INTEGER,
+				previous_download_count INTEGER,
+				next_max_downloads INTEGER,
+				next_download_count INTEGER,
+				created_at INTEGER NOT NULL,
+				FOREIGN KEY (delivery_id) REFERENCES file_deliveries (id)
+			)`,
+		)
+		.run();
+
+	await createDatabaseIndexes(db);
+}
+
+async function ensureFileDeliveryColumns(db: LockerDb) {
+	const columns = await db.prepare("PRAGMA table_info(file_deliveries)").all<TableColumnRow>();
+	const existingColumns = new Set((columns.results ?? []).map((column) => column.name));
+
+	for (const [name, definition] of Object.entries(fileDeliveryColumns)) {
+		if (!existingColumns.has(name)) {
+			await addColumnIfMissing(db, "file_deliveries", name, definition);
+		}
+	}
+}
+
+async function addColumnIfMissing(db: LockerDb, table: string, name: string, definition: string) {
+	try {
+		await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`).run();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "";
+		if (!message.toLowerCase().includes("duplicate column")) {
+			throw error;
+		}
+	}
+}
+
+async function createDatabaseIndexes(db: LockerDb) {
+	const statements = [
+		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_pickup_code_hash ON file_deliveries (pickup_code_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_manage_code_hash ON file_deliveries (manage_code_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_expires_at ON file_deliveries (expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_delivery_events_delivery_id ON delivery_events (delivery_id, created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_delivery_events_created_at ON delivery_events (created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_delivery_events_action ON delivery_events (action)",
+	];
+
+	for (const statement of statements) {
+		await db.prepare(statement).run();
+	}
 }
 
 export async function getSitePassword() {
