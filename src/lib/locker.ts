@@ -11,7 +11,7 @@ export const SITE_AUTH_MAX_AGE = 60 * 60 * 24 * 7;
 export const ADMIN_AUTH_COOKIE = "file_delivery_locker_admin_auth";
 export const ADMIN_AUTH_MAX_AGE = 60 * 60 * 8;
 
-type SiteEnv = CloudflareEnv & {
+type SiteEnv = {
 	DB: LockerDb;
 	FILE_BUCKET: LockerBucket;
 	SITE_PASSWORD?: string;
