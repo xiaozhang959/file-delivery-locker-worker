@@ -96,6 +96,9 @@ export async function getCloudflareBindings() {
 	};
 }
 
+export type LockerDb = NonNullable<Awaited<ReturnType<typeof getCloudflareBindings>>["db"]>;
+export type LockerBucket = NonNullable<Awaited<ReturnType<typeof getCloudflareBindings>>["bucket"]>;
+
 export async function getSitePassword() {
 	const { env } = await getCloudflareContext({ async: true });
 	return normalizeSitePassword((env as SiteEnv).SITE_PASSWORD);
@@ -262,7 +265,7 @@ export function getRequestSource(request: Request): RequestSource {
 	};
 }
 
-export async function recordDeliveryEvent(db: D1Database, input: DeliveryEventInput) {
+export async function recordDeliveryEvent(db: LockerDb, input: DeliveryEventInput) {
 	const source = input.source;
 	await db
 		.prepare(

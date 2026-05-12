@@ -1,6 +1,8 @@
 import {
 	MAX_TEXT_SIZE,
 	type DeliveryRow,
+	type LockerBucket,
+	type LockerDb,
 	getCloudflareBindings,
 	getRequestSource,
 	hashCode,
@@ -135,7 +137,7 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 	});
 }
 
-async function markDeleted(db: D1Database, bucket: R2Bucket, row: DeliveryRow, now: number, reason: string) {
+async function markDeleted(db: LockerDb, bucket: LockerBucket, row: DeliveryRow, now: number, reason: string) {
 	await db
 		.prepare("UPDATE file_deliveries SET deleted_at = ?, deleted_reason = ? WHERE id = ? AND deleted_at IS NULL")
 		.bind(now, reason, row.id)
