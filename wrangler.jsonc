@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "file-delivery-locker",
+	"name": "file-delivery-locker-worker",
 	"main": ".open-next/worker.js",
 	"compatibility_date": "2026-05-09",
 	"compatibility_flags": [
@@ -21,7 +21,7 @@
 			// Self-reference service binding. This service value should match `name`.
 			// See https://opennext.js.org/cloudflare/caching
 			"binding": "WORKER_SELF_REFERENCE",
-			"service": "file-delivery-locker"
+			"service": "file-delivery-locker-worker"
 		}
 	],
 	"observability": {
