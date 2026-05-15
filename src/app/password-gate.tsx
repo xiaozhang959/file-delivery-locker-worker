@@ -2,12 +2,14 @@
 
 import { type FormEvent, useState } from "react";
 import { readApiJson } from "./components/api-json";
+import { useI18n } from "./i18n";
 
 type AuthResponse = {
 	error?: string;
 };
 
 export default function PasswordGate() {
+	const { t } = useI18n();
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -25,14 +27,14 @@ export default function PasswordGate() {
 				},
 				body: JSON.stringify({ password }),
 			});
-			const data = await readApiJson<AuthResponse>(response, "密码不正确。");
+			await readApiJson<AuthResponse>(response, t("auth.passwordIncorrect"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "密码不正确。");
+				throw new Error(t("auth.passwordIncorrect"));
 			}
 
 			window.location.reload();
 		} catch (authError) {
-			setError(authError instanceof Error ? authError.message : "密码不正确。");
+			setError(authError instanceof Error ? authError.message : t("auth.passwordIncorrect"));
 		} finally {
 			setBusy(false);
 		}
@@ -42,9 +44,9 @@ export default function PasswordGate() {
 		<main className="app-shell min-h-screen">
 			<section className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col items-center justify-center gap-10 px-5 pt-6 pb-16 sm:px-8 min-[960px]:px-10 max-sm:gap-8 max-sm:pt-4">
 				<form className="panel panel-feature flex w-[min(100%,420px)] flex-col gap-5" onSubmit={enterSite}>
-					<h2>访问密码</h2>
+					<h2>{t("auth.accessPassword")}</h2>
 					<label className="field flex flex-col gap-2">
-						<span>密码</span>
+						<span>{t("auth.password")}</span>
 						<input
 							className="h-[42px] w-full"
 							autoComplete="current-password"
@@ -60,7 +62,7 @@ export default function PasswordGate() {
 						disabled={busy}
 						type="submit"
 					>
-						{busy ? "验证中" : "进入网站"}
+						{busy ? t("auth.verifying") : t("auth.enterSite")}
 					</button>
 				</form>
 			</section>

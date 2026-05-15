@@ -5,9 +5,11 @@ import {
 	type KeyboardEvent,
 	useRef,
 } from "react";
+import { useI18n } from "../i18n";
 import { PICKUP_CODE_LENGTH, normalizePickupCode } from "./locker-format";
 
 export function PickupCodeInput({ onChange, value }: { onChange: (value: string) => void; value: string }) {
+	const { t } = useI18n();
 	const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
 	const chars = Array.from({ length: PICKUP_CODE_LENGTH }, (_, index) => value[index] ?? "");
 
@@ -67,12 +69,12 @@ export function PickupCodeInput({ onChange, value }: { onChange: (value: string)
 
 	return (
 		<div className="field pickup-code-field flex flex-col gap-2">
-			<span id="pickup-code-label">取件码</span>
+			<span id="pickup-code-label">{t("pickup.inputLabel")}</span>
 			<div aria-labelledby="pickup-code-label" className="grid grid-cols-6 gap-2" role="group">
 				{chars.map((char, index) => (
 					<input
 						className="min-w-0 p-0 text-center"
-						aria-label={`取件码第 ${index + 1} 位`}
+						aria-label={t("pickup.charLabel", { index: index + 1 })}
 						autoCapitalize="characters"
 						autoComplete={index === 0 ? "one-time-code" : "off"}
 						inputMode="text"

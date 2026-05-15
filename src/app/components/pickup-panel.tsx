@@ -1,21 +1,15 @@
 "use client";
 
 import type { FormEvent } from "react";
+import { useI18n } from "../i18n";
 import { formatBytes, formatTime } from "./locker-format";
 import type { Delivery, TextPreview } from "./locker-types";
 import { Mini } from "./mini";
 import { PickupCodeInput } from "./pickup-code-input";
 
-const statusText: Record<Delivery["status"], string> = {
-	available: "可取件",
-	deleted: "已撤回",
-	depleted: "次数已用尽",
-	expired: "已过期",
-};
-
-function formatDownloadLimit(delivery: Delivery, textPreview: TextPreview | null) {
+function formatDownloadLimit(delivery: Delivery, textPreview: TextPreview | null, unlimitedLabel: string) {
 	if (delivery.maxDownloads === 0) {
-		return "无限";
+		return unlimitedLabel;
 	}
 
 	const remaining = delivery.kind === "text" && textPreview ? textPreview.remainingDownloads : delivery.remainingDownloads;
@@ -49,11 +43,19 @@ export function PickupPanel({
 	onPickupCodeChange,
 	onSubmit,
 }: PickupPanelProps) {
+	const { locale, t } = useI18n();
+	const statusText: Record<Delivery["status"], string> = {
+		available: t("status.available"),
+		deleted: t("status.deleted"),
+		depleted: t("status.depleted"),
+		expired: t("status.expired"),
+	};
+
 	return (
 		<form className="panel panel-dark flex items-center justify-center flex-col gap-5 h-full" onSubmit={onSubmit}>
 			<div className="w-full">
-				<h2>取件</h2>
-				<p className="panel-copy">输入取件码查看文件状态</p>
+				<h2>{t("pickup.title")}</h2>
+				<p className="panel-copy">{t("pickup.copy")}</p>
 			</div>
 			<PickupCodeInput value={pickupCode} onChange={onPickupCodeChange} />
 			<button
@@ -62,7 +64,7 @@ export function PickupPanel({
 				type="submit"
 			>
 				<span aria-hidden="true">⌕</span>
-				{busy ? "查询中" : "查询文件"}
+				{busy ? t("pickup.searching") : t("pickup.search")}
 			</button>
 			{powStatus && <p className="panel-copy m-0 text-center">{powStatus}</p>}
 
@@ -77,19 +79,25 @@ export function PickupPanel({
 					</div>
 					<div className="grid grid-cols-2 gap-3 text-sm">
 						<Mini
-							label="剩余"
-							value={formatDownloadLimit(delivery, textPreview)}
+							label={t("pickup.remaining")}
+							value={formatDownloadLimit(delivery, textPreview, t("common.unlimited"))}
 						/>
-						<Mini label="过期" value={formatTime(delivery.expiresAt)} />
+						<Mini label={t("pickup.expires")} value={formatTime(delivery.expiresAt, locale, t("common.forever"))} />
 					</div>
 					{delivery.kind === "text" ? (
 						delivery.status === "available" ? (
 							<div className="text-preview flex flex-col gap-3">
 								<div className="flex items-center justify-between gap-3">
-									<span>文本预览</span>
-									{textPreview && <small>剩余 {textPreview.remainingDownloads === null ? "无限" : `${textPreview.remainingDownloads} 次`}</small>}
+									<span>{t("pickup.preview")}</span>
+									{textPreview && (
+										<small>
+											{textPreview.remainingDownloads === null
+												? t("common.unlimited")
+												: t("pickup.remainingTimes", { count: textPreview.remainingDownloads })}
+										</small>
+									)}
 								</div>
-								<pre>{textPreview?.text ?? "正在读取文本..."}</pre>
+								<pre>{textPreview?.text ?? t("pickup.loadingText")}</pre>
 								<button
 									className="secondary-button inline-flex min-h-10 items-center justify-center gap-[9px] rounded-lg px-5 text-sm leading-none font-medium no-underline"
 									disabled={!textPreview}
@@ -97,7 +105,7 @@ export function PickupPanel({
 									onClick={() => textPreview && onCopy(textPreview.text)}
 								>
 									<span aria-hidden="true">⧉</span>
-									复制文本
+									{t("pickup.copyText")}
 								</button>
 							</div>
 						) : null
@@ -109,7 +117,7 @@ export function PickupPanel({
 								onClick={onDownload}
 							>
 								<span aria-hidden="true">↓</span>
-								{downloading ? "下载中" : "下载文件"}
+								{downloading ? t("pickup.downloading") : t("pickup.download")}
 							</button>
 					)}
 				</div>

@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import type { DragEvent, FormEvent } from "react";
+import { useI18n } from "../i18n";
 import { CodeBlock } from "./code-block";
 import type { DeliveryKind, UploadResult } from "./locker-types";
 
 const expiryOptions = [
-	{ label: "永久", value: 0 },
-	{ label: "1 小时", value: 1 },
-	{ label: "24 小时", value: 24 },
-	{ label: "7 天", value: 168 },
-];
+	{ labelKey: "common.forever", value: 0 },
+	{ labelKey: "upload.expiry1Hour", value: 1 },
+	{ labelKey: "upload.expiry24Hours", value: 24 },
+	{ labelKey: "upload.expiry7Days", value: 168 },
+] as const;
 
 type UploadPanelProps = {
 	busy: boolean;
@@ -55,6 +56,7 @@ export function UploadPanel({
 	onTextContentChange,
 	onTextFileChange,
 }: UploadPanelProps) {
+	const { t } = useI18n();
 	const [isDragActive, setIsDragActive] = useState(false);
 
 	function hasDroppableData(event: DragEvent<HTMLElement>) {
@@ -120,13 +122,13 @@ export function UploadPanel({
 		>
 			<div className="flex items-center justify-between gap-4">
 				<div>
-					<h2>寄件</h2>
+					<h2>{t("upload.title")}</h2>
 					<p className="panel-copy">
 						{demoMode
-							? "演示模式下只能查看和取件，不能放入新内容"
+							? t("upload.demoCopy")
 							: deliveryMode === "text"
-								? "输入一段文本放入快递柜"
-								: selectedFileName ?? "选择一个文件放入快递柜"}
+								? t("upload.textCopy")
+								: selectedFileName ?? t("upload.fileCopy")}
 					</p>
 				</div>
 				<span className="badge-coral inline-flex w-fit items-center">{uploadBadge}</span>
@@ -134,13 +136,13 @@ export function UploadPanel({
 
 			<div className="w-full">
 				<div className="mode-switch-row inline-flex min-h-11 w-fit items-center justify-center self-center">
-					<span className={deliveryMode === "file" ? "active" : undefined}>上传文件</span>
+					<span className={deliveryMode === "file" ? "active" : undefined}>{t("upload.modeFile")}</span>
 					<button
 						type="button"
 						className="mode-switch inline-flex h-7 w-[54px] items-center p-0 mx-2"
 						role="switch"
 						aria-checked={deliveryMode === "text"}
-						aria-label="切换寄件类型"
+						aria-label={t("upload.switchKind")}
 						disabled={demoMode}
 						onClick={() => onDeliveryModeChange(deliveryMode === "text" ? "file" : "text")}
 					>
@@ -148,7 +150,7 @@ export function UploadPanel({
 							<span className="switch-thumb absolute top-1 left-1 h-5 w-5 rounded-full" />
 						</span>
 					</button>
-					<span className={deliveryMode === "text" ? "active" : undefined}>寄存文本</span>
+					<span className={deliveryMode === "text" ? "active" : undefined}>{t("upload.modeText")}</span>
 				</div>
 			</div>
 
@@ -159,10 +161,10 @@ export function UploadPanel({
 						disabled={demoMode}
 						value={textContent}
 						onChange={(event) => onTextContentChange(event.target.value)}
-						placeholder="输入要寄存的纯文本"
+						placeholder={t("upload.textPlaceholder")}
 					/>
 					<div className="flex flex-wrap items-center justify-between gap-3">
-						<span className="text-dropzone-hint">拖入文本文件</span>
+						<span className="text-dropzone-hint">{t("upload.dropTextFile")}</span>
 						<label className="secondary-button inline-flex min-h-9 cursor-pointer items-center justify-center rounded-lg px-4 text-sm font-medium">
 							<input
 								accept=".txt,.md,.csv,.json,.log,.xml,.yml,.yaml,text/*,application/json"
@@ -174,7 +176,7 @@ export function UploadPanel({
 									event.currentTarget.value = "";
 								}}
 							/>
-							选择文本文件
+							{t("upload.chooseTextFile")}
 						</label>
 					</div>
 				</div>
@@ -187,13 +189,13 @@ export function UploadPanel({
 						onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
 					/>
 					<span className="text-4xl">+</span>
-					<span className="font-medium">{demoMode ? "演示模式不可上传" : "选择文件"}</span>
+					<span className="font-medium">{demoMode ? t("upload.demoNoUpload") : t("upload.chooseFile")}</span>
 				</label>
 			)}
 
 			<div className="grid gap-4 sm:grid-cols-2">
 				<label className="field flex flex-col gap-2">
-					<span>保存期限</span>
+					<span>{t("upload.expiry")}</span>
 					<select
 						className="h-[42px] w-full"
 						disabled={demoMode}
@@ -202,13 +204,13 @@ export function UploadPanel({
 					>
 						{expiryOptions.map((option) => (
 							<option key={option.value} value={option.value}>
-								{option.label}
+								{t(option.labelKey)}
 							</option>
 						))}
 					</select>
 				</label>
 				<label className="field flex flex-col gap-2">
-					<span>下载次数</span>
+					<span>{t("upload.downloadLimit")}</span>
 					<div className="flex min-h-[42px] items-center gap-3">
 						<input
 							className="h-[42px] min-w-0 flex-1"
@@ -224,7 +226,7 @@ export function UploadPanel({
 								type="checkbox"
 								onChange={(event) => onMaxDownloadsUnlimitedChange(event.target.checked)}
 							/>
-							<span>无限次</span>
+							<span>{t("upload.unlimitedTimes")}</span>
 						</label>
 					</div>
 				</label>
@@ -236,14 +238,14 @@ export function UploadPanel({
 				type="submit"
 			>
 				<span aria-hidden="true">↑</span>
-				{demoMode ? "演示模式只读" : busy ? "上传中" : "放入快递柜"}
+				{demoMode ? t("upload.demoReadonly") : busy ? t("upload.uploading") : t("upload.submit")}
 			</button>
 
 			{uploadResult && (
 				<div className="grid grid-cols-1 gap-3 border-t border-[rgba(20,20,19,0.08)] pt-[18px] sm:grid-cols-2">
-					<CodeBlock label="取件码" value={uploadResult.pickupCode} onCopy={onCopy} />
-					<CodeBlock label="管理码" value={uploadResult.manageCode} onCopy={onCopy} />
-					<CodeBlock label="取件链接" value={uploadResult.pickupUrl} onCopy={onCopy} wide />
+					<CodeBlock label={t("upload.pickupCode")} value={uploadResult.pickupCode} onCopy={onCopy} />
+					<CodeBlock label={t("upload.manageCode")} value={uploadResult.manageCode} onCopy={onCopy} />
+					<CodeBlock label={t("upload.pickupUrl")} value={uploadResult.pickupUrl} onCopy={onCopy} wide />
 				</div>
 			)}
 		</form>

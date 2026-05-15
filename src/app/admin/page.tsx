@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { ADMIN_AUTH_COOKIE, getAdminAuthSession, getAdminPassword, getDemoMode } from "@/lib/locker";
+import AdminDisabled from "./admin-disabled";
 import AdminApp from "./admin-app";
 import AdminLogin from "./admin-login";
 
@@ -13,16 +14,7 @@ export default async function AdminPage() {
 	const demoMode = await getDemoMode();
 	const adminPassword = await getAdminPassword();
 	if (!adminPassword) {
-		return (
-			<main className="app-shell min-h-screen">
-				<section className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col items-center justify-center px-5 py-16 sm:px-8">
-					<div className="panel panel-feature flex w-[min(100%,460px)] flex-col gap-3">
-						<h2>管理后台未启用</h2>
-						<p className="panel-copy">请先配置 ADMIN_PASSWORD。</p>
-					</div>
-				</section>
-			</main>
-		);
+		return <AdminDisabled />;
 	}
 
 	const cookieStore = await cookies();

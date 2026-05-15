@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import { GooeyToaster, gooeyToast } from "goey-toast";
+import { useI18n } from "./i18n";
 import { AdminPanel } from "./components/admin-panel";
 import { readApiJson } from "./components/api-json";
 import { formatBytes, normalizePickupCode, PICKUP_CODE_LENGTH } from "./components/locker-format";
@@ -25,7 +26,6 @@ import { StatsLockup } from "./components/stats-lockup";
 import { UploadPanel } from "./components/upload-panel";
 
 const MAX_TEXT_SIZE = 256 * 1024;
-const TEXT_FILE_NAME = "寄存文本.txt";
 const textFilePattern = /\.(txt|md|csv|json|log|xml|yml|yaml)$/i;
 
 function isTextUploadFile(nextFile: File) {
@@ -38,6 +38,7 @@ type LockerAppProps = {
 };
 
 export default function LockerApp({ csrfToken = null, demoMode = false }: LockerAppProps) {
+	const { t } = useI18n();
 	const [deliveryMode, setDeliveryMode] = useState<DeliveryKind>("file");
 	const [file, setFile] = useState<File | null>(null);
 	const [textContent, setTextContent] = useState("");
@@ -55,7 +56,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 	const [busy, setBusy] = useState<"upload" | "lookup" | "download" | "revoke" | null>(null);
 	const capProgressRef = useRef<(progress: number) => void>(() => undefined);
 
-	const selectedFileSize = useMemo(() => (file ? formatBytes(file.size) : "未选择"), [file]);
+	const selectedFileSize = useMemo(() => (file ? formatBytes(file.size) : t("upload.notSelected")), [file, t]);
 	const textSize = useMemo(() => formatBytes(new TextEncoder().encode(textContent).length), [textContent]);
 	const uploadBadge = deliveryMode === "text" ? textSize : selectedFileSize;
 
@@ -99,7 +100,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		}
 
 		if (demoMode) {
-			notify("演示模式下不能寄存文本。", "warning");
+			notify(t("message.demoNoText"), "warning");
 			return;
 		}
 
@@ -109,26 +110,26 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		setPickupAccessToken("");
 
 		if (!isTextUploadFile(nextFile)) {
-			notify("请拖入文本文件。", "warning");
+			notify(t("message.textFileOnly"), "warning");
 			return;
 		}
 
 		if (nextFile.size > MAX_TEXT_SIZE) {
-			notify("文本不能超过 256 KB。", "warning");
+			notify(t("message.textTooLarge"), "warning");
 			return;
 		}
 
 		try {
 			const nextText = await nextFile.text();
 			if (!nextText.trim()) {
-				notify("文本文件是空的。", "warning");
+				notify(t("message.emptyTextFile"), "warning");
 				return;
 			}
 
 			setTextContent(nextText);
-			notify("文本文件已载入。", "success");
+			notify(t("message.textLoaded"), "success");
 		} catch (error) {
-			notify(error instanceof Error ? error.message : "文本文件读取失败。", "error");
+			notify(error instanceof Error ? error.message : t("message.textReadFailed"), "error");
 		}
 	}
 
@@ -139,7 +140,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		setTextPreview(null);
 
 		if (demoMode) {
-			notify("演示模式下不能上传或寄存内容。", "warning");
+			notify(t("message.demoNoUpload"), "warning");
 			return;
 		}
 
@@ -149,7 +150,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		const maxDownloads = maxDownloadsUnlimited ? 0 : Number(maxDownloadsInput);
 
 		if (!maxDownloadsUnlimited && (!Number.isInteger(maxDownloads) || maxDownloads < 1)) {
-			notify("下载次数请输入大于 0 的整数。", "warning");
+			notify(t("message.invalidDownloadCount"), "warning");
 			return;
 		}
 
@@ -157,26 +158,26 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 			const textBytes = new TextEncoder().encode(textContent);
 
 			if (!textContent.trim()) {
-				notify("请输入要寄存的文本。", "warning");
+				notify(t("message.enterText"), "warning");
 				return;
 			}
 
 			if (textBytes.length > MAX_TEXT_SIZE) {
-				notify("文本不能超过 256 KB。", "warning");
+				notify(t("message.textTooLarge"), "warning");
 				return;
 			}
 
 			contentType = "text/plain;charset=utf-8";
-			fileName = TEXT_FILE_NAME;
+			fileName = t("upload.textFileName");
 			body = new Blob([textContent], { type: contentType });
 		} else {
 			if (!file) {
-				notify("请选择一个文件。", "warning");
+				notify(t("message.chooseFile"), "warning");
 				return;
 			}
 
 			if (file.size > 100 * 1024 * 1024) {
-				notify("文件不能超过 100 MB。", "warning");
+				notify(t("message.fileTooLarge"), "warning");
 				return;
 			}
 
@@ -200,18 +201,18 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 				},
 				body,
 			});
-			const data = await readApiJson<ApiError & UploadResult>(response, "上传失败。");
+			const data = await readApiJson<ApiError & UploadResult>(response, t("message.uploadFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "上传失败。");
+				throw new Error(t("message.uploadFailed"));
 			}
 
 			setUploadResult(data);
 			setPickupCode(data.pickupCode);
 			setManageCode(data.manageCode);
 			void loadStats();
-			notify(deliveryMode === "text" ? "文本已入柜。" : "文件已入柜。", "success");
+			notify(deliveryMode === "text" ? t("message.textStored") : t("message.fileStored"), "success");
 		} catch (error) {
-			notify(error instanceof Error ? error.message : "上传失败。", "error");
+			notify(error instanceof Error ? error.message : t("message.uploadFailed"), "error");
 		} finally {
 			setBusy(null);
 		}
@@ -227,25 +228,25 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		gooeyToast.dismiss();
 
 		if (code.length !== PICKUP_CODE_LENGTH) {
-			notify("请输入 6 位取件码。", "warning");
+			notify(t("message.enterPickupCode"), "warning");
 			return;
 		}
 
 		setBusy("lookup");
-		setPowStatus("正在完成人机校验...");
+		setPowStatus(t("message.powInitial"));
 		try {
 			const capToken = await solvePowToken((progress) => {
-				setPowStatus(`正在完成人机校验 ${Math.round(progress)}%`);
+				setPowStatus(t("message.powProgress", { progress: Math.round(progress) }));
 			});
-			setPowStatus("正在查询取件码...");
+			setPowStatus(t("message.queryPickup"));
 			const response = await fetch(`/api/deliveries/${encodeURIComponent(code)}`, {
 				headers: {
 					"x-cap-token": capToken,
 				},
 			});
-			const data = await readApiJson<ApiError & DeliveryLookupResult>(response, "查询失败。");
+			const data = await readApiJson<ApiError & DeliveryLookupResult>(response, t("message.queryFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "没有找到这个文件。");
+				throw new Error(t("message.notFound"));
 			}
 
 			setDelivery(data.delivery);
@@ -258,7 +259,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 			setDelivery(null);
 			setTextPreview(null);
 			setPickupAccessToken("");
-			notify(error instanceof Error ? error.message : "查询失败。", "error");
+			notify(error instanceof Error ? error.message : t("message.queryFailed"), "error");
 		} finally {
 			setPowStatus("");
 			setBusy(null);
@@ -271,9 +272,9 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 				"x-pickup-access-token": accessToken,
 			},
 		});
-		const data = await readApiJson<ApiError & TextPreview>(response, "文本预览失败。");
+		const data = await readApiJson<ApiError & TextPreview>(response, t("message.previewFailed"));
 		if (!response.ok) {
-			throw new Error(data.error ?? "文本预览失败。");
+			throw new Error(t("message.previewFailed"));
 		}
 
 		setTextPreview({
@@ -288,10 +289,10 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		const cap = new Cap({
 			apiEndpoint: "/api/pow/",
 			"data-cap-worker-count": "1",
-			"data-cap-i18n-initial-state": "人机校验",
-			"data-cap-i18n-verifying-label": "正在校验...",
-			"data-cap-i18n-solved-label": "校验通过",
-			"data-cap-i18n-error-label": "校验失败",
+			"data-cap-i18n-initial-state": t("message.powWidgetInitial"),
+			"data-cap-i18n-verifying-label": t("message.powWidgetVerifying"),
+			"data-cap-i18n-solved-label": t("message.powWidgetSolved"),
+			"data-cap-i18n-error-label": t("message.powWidgetError"),
 		});
 		const handleProgress = (event: CustomEvent<{ progress: number }>) => capProgressRef.current(event.detail.progress);
 		cap.addEventListener("progress", handleProgress as EventListener);
@@ -299,7 +300,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		try {
 			const result = await cap.solve();
 			if (!result.success || !result.token) {
-				throw new Error("人机校验失败，请重试。");
+				throw new Error(t("message.powFailed"));
 			}
 
 			return result.token;
@@ -312,9 +313,9 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 	async function loadStats() {
 		try {
 			const response = await fetch("/api/stats");
-			const data = await readApiJson<ApiError & SiteStats>(response, "统计读取失败。");
+			const data = await readApiJson<ApiError & SiteStats>(response, t("message.statsFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "统计读取失败。");
+				throw new Error(t("message.statsFailed"));
 			}
 
 			setStats({
@@ -322,7 +323,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 				downloadCount: data.downloadCount,
 			});
 		} catch (error) {
-			console.warn(error instanceof Error ? error.message : "统计读取失败。");
+			console.warn(error instanceof Error ? error.message : t("message.statsFailed"));
 		}
 	}
 
@@ -332,7 +333,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		gooeyToast.dismiss();
 
 		if (!code) {
-			notify("请输入管理码。", "warning");
+			notify(t("message.enterManageCode"), "warning");
 			return;
 		}
 
@@ -342,15 +343,15 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 				method: "DELETE",
 				headers: csrfHeaders(csrfToken),
 			});
-			const data = await readApiJson<ApiError>(response, "撤回失败。");
+			await readApiJson<ApiError>(response, t("message.revokeFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "撤回失败。");
+				throw new Error(t("message.revokeFailed"));
 			}
 
-			notify("文件已撤回。", "success");
+			notify(t("message.revoked"), "success");
 			setDelivery(null);
 		} catch (error) {
-			notify(error instanceof Error ? error.message : "撤回失败。", "error");
+			notify(error instanceof Error ? error.message : t("message.revokeFailed"), "error");
 		} finally {
 			setBusy(null);
 		}
@@ -359,7 +360,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 	async function downloadDelivery() {
 		const code = normalizePickupCode(pickupCode);
 		if (!delivery || !pickupAccessToken || code.length !== PICKUP_CODE_LENGTH) {
-			notify("请先查询有效取件码。", "warning");
+			notify(t("message.queryFirst"), "warning");
 			return;
 		}
 
@@ -372,8 +373,8 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 				},
 			});
 			if (!response.ok) {
-				const data = await readApiJson<ApiError>(response, "下载失败。");
-				throw new Error(data.error ?? "下载失败。");
+				await readApiJson<ApiError>(response, t("message.downloadFailed"));
+				throw new Error(t("message.downloadFailed"));
 			}
 
 			const blob = await response.blob();
@@ -387,7 +388,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 			window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 			void loadStats();
 		} catch (error) {
-			notify(error instanceof Error ? error.message : "下载失败。", "error");
+			notify(error instanceof Error ? error.message : t("message.downloadFailed"), "error");
 		} finally {
 			setBusy(null);
 		}
@@ -395,7 +396,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 
 	function copy(value: string) {
 		void navigator.clipboard.writeText(value);
-		notify("已复制。", "success");
+		notify(t("common.copy"), "success");
 	}
 
 	return (

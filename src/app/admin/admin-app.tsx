@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { useI18n } from "../i18n";
 import { readApiJson } from "../components/api-json";
 import { formatBytes } from "../components/locker-format";
 
@@ -68,25 +69,28 @@ type ApiError = {
 };
 
 const statusOptions = [
-	{ label: "全部状态", value: "" },
-	{ label: "可取件", value: "available" },
-	{ label: "已过期", value: "expired" },
-	{ label: "已撤回", value: "deleted" },
-	{ label: "次数用尽", value: "depleted" },
-];
+	{ labelKey: "admin.allStatuses", value: "" },
+	{ labelKey: "status.available", value: "available" },
+	{ labelKey: "status.expired", value: "expired" },
+	{ labelKey: "status.deleted", value: "deleted" },
+	{ labelKey: "status.depleted", value: "depleted" },
+] as const;
 
 const kindOptions = [
-	{ label: "全部类型", value: "" },
-	{ label: "文件", value: "file" },
-	{ label: "文本", value: "text" },
-];
+	{ labelKey: "admin.allKinds", value: "" },
+	{ labelKey: "admin.kindFile", value: "file" },
+	{ labelKey: "admin.kindText", value: "text" },
+] as const;
 
 type AdminAppProps = {
 	csrfToken: string;
 	demoMode?: boolean;
 };
 
+type TFunction = ReturnType<typeof useI18n>["t"];
+
 export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps) {
+	const { locale, t } = useI18n();
 	const [deliveries, setDeliveries] = useState<AdminDelivery[]>([]);
 	const [events, setEvents] = useState<DeliveryEvent[]>([]);
 	const [eventDelivery, setEventDelivery] = useState<AdminDelivery | null>(null);
@@ -123,20 +127,20 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 			}
 
 			const response = await fetch(`/api/admin/deliveries?${params.toString()}`);
-			const data = await readApiJson<DeliveriesResponse>(response, "后台列表读取失败。");
+			const data = await readApiJson<DeliveriesResponse>(response, t("admin.listFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "后台列表读取失败。");
+				throw new Error(t("admin.listFailed"));
 			}
 
 			setDeliveries(data.deliveries);
 			setTotal(data.total);
 			setTotalPages(data.totalPages);
 		} catch (error) {
-			setMessage(error instanceof Error ? error.message : "后台列表读取失败。");
+			setMessage(error instanceof Error ? error.message : t("admin.listFailed"));
 		} finally {
 			setBusy(null);
 		}
-	}, [kind, page, query, status]);
+	}, [kind, page, query, status, t]);
 
 	useEffect(() => {
 		const timer = window.setTimeout(() => {
@@ -154,7 +158,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 
 	function beginEdit(delivery: AdminDelivery) {
 		if (demoMode) {
-			setMessage("演示模式下后台为只读。");
+			setMessage(t("admin.demoReadonlyMessage"));
 			return;
 		}
 
@@ -171,15 +175,15 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 
 		try {
 			const response = await fetch(`/api/admin/deliveries/${encodeURIComponent(delivery.id)}/events`);
-			const data = await readApiJson<EventsResponse>(response, "事件读取失败。");
+			const data = await readApiJson<EventsResponse>(response, t("admin.eventsFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "事件读取失败。");
+				throw new Error(t("admin.eventsFailed"));
 			}
 
 			setEvents(data.events);
 		} catch (error) {
 			setEvents([]);
-			setMessage(error instanceof Error ? error.message : "事件读取失败。");
+			setMessage(error instanceof Error ? error.message : t("admin.eventsFailed"));
 		} finally {
 			setBusy(null);
 		}
@@ -187,7 +191,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 
 	async function revokeDelivery(delivery: AdminDelivery) {
 		if (demoMode) {
-			setMessage("演示模式下不能撤回文件。");
+			setMessage(t("admin.demoNoRevoke"));
 			return;
 		}
 
@@ -203,12 +207,12 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 				method: "POST",
 				headers: csrfHeaders(csrfToken),
 			});
-			const data = await readApiJson<ApiError>(response, "撤回失败。");
+			await readApiJson<ApiError>(response, t("message.revokeFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "撤回失败。");
+				throw new Error(t("message.revokeFailed"));
 			}
 
-			setMessage("文件已撤回。");
+			setMessage(t("message.revoked"));
 			setActionDelivery((current) =>
 				current?.id === delivery.id
 					? {
@@ -221,7 +225,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 			);
 			await loadDeliveries();
 		} catch (error) {
-			setMessage(error instanceof Error ? error.message : "撤回失败。");
+			setMessage(error instanceof Error ? error.message : t("message.revokeFailed"));
 		} finally {
 			setBusy(null);
 		}
@@ -229,7 +233,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 
 	async function saveCounts(delivery: AdminDelivery) {
 		if (demoMode) {
-			setMessage("演示模式下不能修改下载次数。");
+			setMessage(t("admin.demoNoCounts"));
 			return;
 		}
 
@@ -237,12 +241,12 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 		const downloadCount = Number(editDownloadCount);
 
 		if (!Number.isInteger(maxDownloads) || maxDownloads < 1 || !Number.isInteger(downloadCount) || downloadCount < 0) {
-			setMessage("次数必须是有效整数。");
+			setMessage(t("admin.invalidCounts"));
 			return;
 		}
 
 		if (downloadCount > maxDownloads) {
-			setMessage("已用次数不能大于最大次数。");
+			setMessage(t("admin.countExceeded"));
 			return;
 		}
 
@@ -258,9 +262,9 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 				},
 				body: JSON.stringify({ maxDownloads, downloadCount }),
 			});
-			const data = await readApiJson<ApiError>(response, "次数修改失败。");
+			await readApiJson<ApiError>(response, t("admin.countsFailed"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "次数修改失败。");
+				throw new Error(t("admin.countsFailed"));
 			}
 
 			setActionDelivery((current) =>
@@ -285,10 +289,10 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 						}
 					: current,
 			);
-			setMessage("次数已更新。");
+			setMessage(t("admin.countsUpdated"));
 			await loadDeliveries();
 		} catch (error) {
-			setMessage(error instanceof Error ? error.message : "次数修改失败。");
+			setMessage(error instanceof Error ? error.message : t("admin.countsFailed"));
 		} finally {
 			setBusy(null);
 		}
@@ -299,26 +303,26 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 			<section className="mx-auto flex min-h-screen w-full max-w-[1360px] flex-col gap-6 px-5 pt-6 pb-16 sm:px-8 min-[960px]:px-10">
 				<header className="flex flex-wrap items-end justify-between gap-4">
 					<div>
-						<h1 className="m-0 font-[var(--font-display)] text-[34px] font-normal leading-tight text-[var(--ink)]">管理后台</h1>
-						<p className="panel-copy">{demoMode ? "演示模式只读 · " : ""}共 {total} 条上传记录</p>
+						<h1 className="m-0 font-[var(--font-display)] text-[34px] font-normal leading-tight text-[var(--ink)]">{t("admin.title")}</h1>
+						<p className="panel-copy">{demoMode ? t("admin.demoPrefix") : ""}{t("admin.totalUploads", { total })}</p>
 					</div>
 					<Link className="secondary-button inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-medium no-underline" href="/">
-						返回前台
+						{t("admin.backHome")}
 					</Link>
 				</header>
 
 				<form className="panel panel-feature grid gap-4 min-[860px]:grid-cols-[minmax(220px,1fr)_180px_180px_auto]" onSubmit={applySearch}>
 					<label className="field flex flex-col gap-2">
-						<span>搜索</span>
+						<span>{t("admin.search")}</span>
 						<input
 							className="h-[42px] w-full"
 							value={searchInput}
 							onChange={(event) => setSearchInput(event.target.value)}
-							placeholder="文件名、ID 或 IP"
+							placeholder={t("admin.searchPlaceholder")}
 						/>
 					</label>
 					<label className="field flex flex-col gap-2">
-						<span>状态</span>
+						<span>{t("admin.status")}</span>
 						<select
 							className="h-[42px] w-full"
 							value={status}
@@ -329,13 +333,13 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 						>
 							{statusOptions.map((option) => (
 								<option key={option.value} value={option.value}>
-									{option.label}
+									{t(option.labelKey)}
 								</option>
 							))}
 						</select>
 					</label>
 					<label className="field flex flex-col gap-2">
-						<span>类型</span>
+						<span>{t("admin.kind")}</span>
 						<select
 							className="h-[42px] w-full"
 							value={kind}
@@ -346,13 +350,13 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 						>
 							{kindOptions.map((option) => (
 								<option key={option.value} value={option.value}>
-									{option.label}
+									{t(option.labelKey)}
 								</option>
 							))}
 						</select>
 					</label>
 					<button className="primary-button inline-flex min-h-10 items-center justify-center self-end rounded-lg px-5 text-sm font-medium" type="submit">
-						搜索
+						{t("admin.search")}
 					</button>
 				</form>
 
@@ -363,15 +367,15 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 						<table className="admin-table w-full min-w-[1060px] border-collapse text-left text-sm">
 							<thead>
 								<tr>
-									<th>文件</th>
-									<th>状态</th>
-									<th>大小</th>
-									<th>次数</th>
-									<th>创建时间</th>
-									<th>过期时间</th>
-									<th>上传来源</th>
-									<th>浏览器</th>
-									<th>操作</th>
+									<th>{t("admin.headerFile")}</th>
+									<th>{t("admin.status")}</th>
+									<th>{t("admin.headerSize")}</th>
+									<th>{t("admin.headerCounts")}</th>
+									<th>{t("admin.headerCreated")}</th>
+									<th>{t("admin.headerExpires")}</th>
+									<th>{t("admin.headerSource")}</th>
+									<th>{t("admin.headerBrowser")}</th>
+									<th>{t("admin.headerActions")}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -379,25 +383,25 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 									<tr key={delivery.id}>
 										<td>
 											<strong>{delivery.fileName}</strong>
-											<span>{delivery.kind === "text" ? "文本" : delivery.contentType}</span>
+											<span>{delivery.kind === "text" ? t("admin.kindText") : delivery.contentType}</span>
 										</td>
 										<td>
-											<span className={`admin-status admin-status-${delivery.status}`}>{statusLabel(delivery.status)}</span>
+											<span className={`admin-status admin-status-${delivery.status}`}>{statusLabel(delivery.status, t)}</span>
 											{delivery.deletedReason ? <span>{delivery.deletedReason}</span> : null}
 										</td>
 										<td>{formatBytes(delivery.size)}</td>
 										<td>{delivery.downloadCount}/{delivery.maxDownloads}</td>
-										<td>{formatDate(delivery.createdAt)}</td>
-										<td>{formatDate(delivery.expiresAt)}</td>
-										<td title={delivery.upload.userAgent ?? undefined}>{sourceLocation(delivery.upload)}</td>
-										<td>{sourceBrowser(delivery.upload)}</td>
+										<td>{formatDate(delivery.createdAt, locale)}</td>
+										<td>{formatDate(delivery.expiresAt, locale)}</td>
+										<td title={delivery.upload.userAgent ?? undefined}>{sourceLocation(delivery.upload, t)}</td>
+										<td>{sourceBrowser(delivery.upload, t)}</td>
 										<td>
 											<div className="flex flex-wrap gap-2">
 												<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" type="button" onClick={() => loadEvents(delivery)}>
-													事件
+													{t("admin.events")}
 												</button>
 												<button className="secondary-button min-h-9 rounded-lg px-3 text-sm" disabled={demoMode} type="button" onClick={() => beginEdit(delivery)}>
-													{demoMode ? "只读" : "操作"}
+													{demoMode ? t("admin.readonly") : t("admin.actions")}
 												</button>
 											</div>
 										</td>
@@ -405,16 +409,16 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 								))}
 							</tbody>
 						</table>
-						{deliveries.length === 0 ? <p className="panel-copy py-6 text-center">暂无记录</p> : null}
+						{deliveries.length === 0 ? <p className="panel-copy py-6 text-center">{t("common.none")}</p> : null}
 					</div>
 					<div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--hairline)] pt-4">
-						<span className="panel-copy">第 {page} / {totalPages} 页</span>
+						<span className="panel-copy">{t("admin.page", { page, totalPages })}</span>
 						<div className="flex gap-2">
 							<button className="secondary-button min-h-9 rounded-lg px-4 text-sm" disabled={page <= 1 || busy === "list"} type="button" onClick={() => setPage((value) => Math.max(1, value - 1))}>
-								上一页
+								{t("admin.prevPage")}
 							</button>
 							<button className="secondary-button min-h-9 rounded-lg px-4 text-sm" disabled={page >= totalPages || busy === "list"} type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
-								下一页
+								{t("admin.nextPage")}
 							</button>
 						</div>
 					</div>
@@ -422,37 +426,37 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 			</section>
 
 			{eventDelivery ? (
-				<AdminModal title="事件" subtitle={eventDelivery.fileName} onClose={() => setEventDelivery(null)} dark>
+				<AdminModal title={t("admin.events")} subtitle={eventDelivery.fileName} closeLabel={t("common.close")} onClose={() => setEventDelivery(null)} dark>
 					<div className="flex flex-col gap-3">
 						{message ? <p className="auth-error">{message}</p> : null}
-						{busy === "events" ? <p className="panel-copy">读取中</p> : null}
+						{busy === "events" ? <p className="panel-copy">{t("common.loading")}</p> : null}
 						{events.map((event) => (
 							<div className="admin-event" key={event.id}>
 								<div className="flex items-center justify-between gap-3">
-									<strong>{actionLabel(event.action)}</strong>
-									<span>{formatDate(event.createdAt)}</span>
+									<strong>{actionLabel(event.action, t)}</strong>
+									<span>{formatDate(event.createdAt, locale)}</span>
 								</div>
-								<p>{sourceLocation(event.source)} · {sourceBrowser(event.source)}</p>
+								<p>{sourceLocation(event.source, t)} · {sourceBrowser(event.source, t)}</p>
 								{event.previousMaxDownloads !== null || event.nextMaxDownloads !== null ? (
 									<p>
-										次数 {event.previousDownloadCount ?? "-"} / {event.previousMaxDownloads ?? "-"} → {event.nextDownloadCount ?? "-"} / {event.nextMaxDownloads ?? "-"}
+										{t("admin.headerCounts")} {event.previousDownloadCount ?? "-"} / {event.previousMaxDownloads ?? "-"} → {event.nextDownloadCount ?? "-"} / {event.nextMaxDownloads ?? "-"}
 									</p>
 								) : null}
 								{event.note ? <p>{event.note}</p> : null}
 							</div>
 						))}
-						{events.length === 0 && busy !== "events" ? <p className="panel-copy">暂无事件</p> : null}
+						{events.length === 0 && busy !== "events" ? <p className="panel-copy">{t("common.noEvents")}</p> : null}
 					</div>
 				</AdminModal>
 			) : null}
 
 			{actionDelivery ? (
-				<AdminModal title="操作" subtitle={actionDelivery.fileName} onClose={() => setActionDelivery(null)}>
+				<AdminModal title={t("admin.actions")} subtitle={actionDelivery.fileName} closeLabel={t("common.close")} onClose={() => setActionDelivery(null)}>
 					<div className="grid gap-5">
 						{message ? <p className="auth-error">{message}</p> : null}
 						<div className="grid gap-3 sm:grid-cols-2">
 							<label className="field flex flex-col gap-2">
-								<span>最大次数</span>
+								<span>{t("admin.maxDownloads")}</span>
 								<input
 									className="h-[42px] w-full"
 									disabled={demoMode}
@@ -463,7 +467,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 								/>
 							</label>
 							<label className="field flex flex-col gap-2">
-								<span>已用次数</span>
+								<span>{t("admin.usedDownloads")}</span>
 								<input
 									className="h-[42px] w-full"
 									disabled={demoMode}
@@ -475,9 +479,9 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 							</label>
 						</div>
 						<div className="rounded-lg border border-[var(--hairline)] p-4 text-sm text-[var(--muted)]">
-							<p className="m-0">当前状态：{statusLabel(actionDelivery.status)}</p>
-							<p className="m-0 mt-2">当前次数：{actionDelivery.downloadCount} / {actionDelivery.maxDownloads}</p>
-							{actionDelivery.deletedReason ? <p className="m-0 mt-2">删除原因：{actionDelivery.deletedReason}</p> : null}
+							<p className="m-0">{t("admin.currentStatus", { status: statusLabel(actionDelivery.status, t) })}</p>
+							<p className="m-0 mt-2">{t("admin.currentCounts", { downloadCount: actionDelivery.downloadCount, maxDownloads: actionDelivery.maxDownloads })}</p>
+							{actionDelivery.deletedReason ? <p className="m-0 mt-2">{t("admin.deletedReason", { reason: actionDelivery.deletedReason })}</p> : null}
 						</div>
 						<div className="flex flex-wrap justify-between gap-3 border-t border-[var(--hairline)] pt-4">
 							<button
@@ -486,11 +490,11 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 								type="button"
 								onClick={() => revokeDelivery(actionDelivery)}
 							>
-								{busy === "revoke" ? "撤回中" : "撤回文件"}
+								{busy === "revoke" ? t("admin.revoking") : t("admin.revokeFile")}
 							</button>
 							<div className="flex flex-wrap gap-2">
 								<button className="secondary-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium" type="button" onClick={() => setActionDelivery(null)}>
-									关闭
+									{t("common.close")}
 								</button>
 								<button
 									className="primary-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium"
@@ -498,7 +502,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 									type="button"
 									onClick={() => saveCounts(actionDelivery)}
 								>
-									{busy === "counts" ? "保存中" : "保存次数"}
+									{busy === "counts" ? t("admin.saving") : t("admin.saveCounts")}
 								</button>
 							</div>
 						</div>
@@ -515,12 +519,14 @@ function csrfHeaders(csrfToken: string): Record<string, string> {
 
 function AdminModal({
 	children,
+	closeLabel,
 	dark = false,
 	onClose,
 	subtitle,
 	title,
 }: {
 	children: ReactNode;
+	closeLabel: string;
 	dark?: boolean;
 	onClose: () => void;
 	subtitle: string;
@@ -550,7 +556,7 @@ function AdminModal({
 						<h2>{title}</h2>
 						<p className="panel-copy">{subtitle}</p>
 					</div>
-					<button className="secondary-button admin-modal-close" type="button" aria-label="关闭弹窗" onClick={onClose}>
+					<button className="secondary-button admin-modal-close" type="button" aria-label={closeLabel} onClick={onClose}>
 						×
 					</button>
 				</div>
@@ -560,8 +566,8 @@ function AdminModal({
 	);
 }
 
-function formatDate(value: string) {
-	return new Intl.DateTimeFormat("zh-CN", {
+function formatDate(value: string, locale: string) {
+	return new Intl.DateTimeFormat(locale, {
 		month: "2-digit",
 		day: "2-digit",
 		hour: "2-digit",
@@ -569,31 +575,31 @@ function formatDate(value: string) {
 	}).format(new Date(value));
 }
 
-function statusLabel(status: AdminStatus) {
+function statusLabel(status: AdminStatus, t: TFunction) {
 	const labels: Record<AdminStatus, string> = {
-		available: "可取件",
-		expired: "已过期",
-		deleted: "已撤回",
-		depleted: "次数用尽",
+		available: t("status.available"),
+		expired: t("status.expired"),
+		deleted: t("status.deleted"),
+		depleted: t("status.depleted"),
 	};
 	return labels[status];
 }
 
-function actionLabel(action: string) {
+function actionLabel(action: string, t: TFunction) {
 	const labels: Record<string, string> = {
-		upload: "上传",
-		download: "下载",
-		admin_revoke: "后台撤回",
-		admin_counts_update: "次数修改",
+		upload: t("event.upload"),
+		download: t("event.download"),
+		admin_revoke: t("event.admin_revoke"),
+		admin_counts_update: t("event.admin_counts_update"),
 	};
 	return labels[action] ?? action;
 }
 
-function sourceLocation(source: SourceInfo) {
+function sourceLocation(source: SourceInfo, t: TFunction) {
 	const place = [source.country, source.region, source.city].filter(Boolean).join(" ");
-	return [source.ip ?? "未知 IP", place].filter(Boolean).join(" · ");
+	return [source.ip ?? t("common.unknownIp"), place].filter(Boolean).join(" · ");
 }
 
-function sourceBrowser(source: SourceInfo) {
-	return [source.browser, source.os, source.device].filter(Boolean).join(" / ") || "未知";
+function sourceBrowser(source: SourceInfo, t: TFunction) {
+	return [source.browser, source.os, source.device].filter(Boolean).join(" / ") || t("common.unknown");
 }

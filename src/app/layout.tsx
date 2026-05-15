@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { LanguageProvider } from "./i18n";
+import { SiteFooter } from "./components/site-footer";
 import "./globals.css";
 import "./styles/layout.css";
 import "./styles/panels.css";
@@ -23,7 +25,12 @@ export default function RootLayout({
 			<head>
 				<link rel="icon" href="/favicon.ico" type="image/svg+xml"></link>
 			</head>
-			<body>{children}</body>
+			<body>
+				<LanguageProvider>
+					{children}
+					<SiteFooter />
+				</LanguageProvider>
+			</body>
 		</html>
 	);
 }

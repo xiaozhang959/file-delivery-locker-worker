@@ -1,0 +1,407 @@
+"use client";
+
+import {
+	createContext,
+	type ReactNode,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
+
+export type Language = "zh" | "en";
+
+const languageStorageKey = "file-delivery-locker-language";
+
+const dictionaries = {
+	zh: {
+		"site.title": "文件快递柜",
+		"site.description": "基于 Cloudflare R2 和 D1 的匿名文件中转柜",
+		"language.label": "语言",
+		"language.zh": "中文",
+		"language.en": "English",
+		"language.switch": "切换语言",
+		"footer.brand": "文件快递柜",
+		"footer.copy": "匿名文件与文本中转, 基于 Cloudflare R2 和 D1. ",
+		"common.forever": "永久",
+		"common.unlimited": "无限",
+		"common.unknown": "未知",
+		"common.unknownIp": "未知 IP",
+		"common.copy": "已复制。",
+		"common.copyNamed": "复制{label}",
+		"common.close": "关闭",
+		"common.loading": "读取中",
+		"common.none": "暂无记录",
+		"common.noEvents": "暂无事件",
+		"auth.password": "密码",
+		"auth.accessPassword": "访问密码",
+		"auth.adminPassword": "后台密码",
+		"auth.enterSite": "进入网站",
+		"auth.enterAdmin": "进入后台",
+		"auth.verifying": "验证中",
+		"auth.passwordIncorrect": "密码不正确。",
+		"auth.adminPasswordIncorrect": "后台密码不正确。",
+		"upload.title": "寄件",
+		"upload.demoCopy": "演示模式下只能查看和取件，不能放入新内容",
+		"upload.textCopy": "输入一段文本放入快递柜",
+		"upload.fileCopy": "选择一个文件放入快递柜",
+		"upload.notSelected": "未选择",
+		"upload.modeFile": "上传文件",
+		"upload.modeText": "寄存文本",
+		"upload.switchKind": "切换寄件类型",
+		"upload.textPlaceholder": "输入要寄存的纯文本",
+		"upload.dropTextFile": "拖入文本文件",
+		"upload.chooseTextFile": "选择文本文件",
+		"upload.demoNoUpload": "演示模式不可上传",
+		"upload.chooseFile": "选择文件",
+		"upload.expiry": "保存期限",
+		"upload.downloadLimit": "下载次数",
+		"upload.unlimitedTimes": "无限次",
+		"upload.demoReadonly": "演示模式只读",
+		"upload.uploading": "上传中",
+		"upload.submit": "放入快递柜",
+		"upload.pickupCode": "取件码",
+		"upload.manageCode": "管理码",
+		"upload.pickupUrl": "取件链接",
+		"upload.textFileName": "寄存文本.txt",
+		"upload.expiry1Hour": "1 小时",
+		"upload.expiry24Hours": "24 小时",
+		"upload.expiry7Days": "7 天",
+		"message.demoNoText": "演示模式下不能寄存文本。",
+		"message.textFileOnly": "请拖入文本文件。",
+		"message.textTooLarge": "文本不能超过 256 KB。",
+		"message.emptyTextFile": "文本文件是空的。",
+		"message.textLoaded": "文本文件已载入。",
+		"message.textReadFailed": "文本文件读取失败。",
+		"message.demoNoUpload": "演示模式下不能上传或寄存内容。",
+		"message.invalidDownloadCount": "下载次数请输入大于 0 的整数。",
+		"message.enterText": "请输入要寄存的文本。",
+		"message.chooseFile": "请选择一个文件。",
+		"message.fileTooLarge": "文件不能超过 100 MB。",
+		"message.uploadFailed": "上传失败。",
+		"message.textStored": "文本已入柜。",
+		"message.fileStored": "文件已入柜。",
+		"message.enterPickupCode": "请输入 6 位取件码。",
+		"message.powInitial": "正在完成人机校验...",
+		"message.powWidgetInitial": "人机校验",
+		"message.powWidgetVerifying": "正在校验...",
+		"message.powWidgetSolved": "校验通过",
+		"message.powWidgetError": "校验失败",
+		"message.powProgress": "正在完成人机校验 {progress}%",
+		"message.queryPickup": "正在查询取件码...",
+		"message.queryFailed": "查询失败。",
+		"message.notFound": "没有找到这个文件。",
+		"message.previewFailed": "文本预览失败。",
+		"message.powFailed": "人机校验失败，请重试。",
+		"message.statsFailed": "统计读取失败。",
+		"message.enterManageCode": "请输入管理码。",
+		"message.revokeFailed": "撤回失败。",
+		"message.revoked": "文件已撤回。",
+		"message.queryFirst": "请先查询有效取件码。",
+		"message.downloadFailed": "下载失败。",
+		"pickup.title": "取件",
+		"pickup.copy": "输入取件码查看文件状态",
+		"pickup.searching": "查询中",
+		"pickup.search": "查询文件",
+		"pickup.remaining": "剩余",
+		"pickup.expires": "过期",
+		"pickup.preview": "文本预览",
+		"pickup.remainingTimes": "剩余 {count} 次",
+		"pickup.loadingText": "正在读取文本...",
+		"pickup.copyText": "复制文本",
+		"pickup.downloading": "下载中",
+		"pickup.download": "下载文件",
+		"pickup.inputLabel": "取件码",
+		"pickup.charLabel": "取件码第 {index} 位",
+		"status.available": "可取件",
+		"status.deleted": "已撤回",
+		"status.depleted": "次数已用尽",
+		"status.expired": "已过期",
+		"admin.manageTitle": "管理",
+		"admin.manageCopy": "使用管理码撤回文件",
+		"admin.manageCode": "管理码",
+		"admin.managePlaceholder": "创建后显示一次",
+		"admin.revoking": "撤回中",
+		"admin.revokeFile": "撤回文件",
+		"admin.title": "管理后台",
+		"admin.metaTitle": "管理后台 - 文件快递柜",
+		"admin.disabled": "管理后台未启用",
+		"admin.configurePassword": "请先配置 ADMIN_PASSWORD。",
+		"admin.demoPrefix": "演示模式只读 · ",
+		"admin.totalUploads": "共 {total} 条上传记录",
+		"admin.backHome": "返回前台",
+		"admin.search": "搜索",
+		"admin.searchPlaceholder": "文件名、ID 或 IP",
+		"admin.status": "状态",
+		"admin.kind": "类型",
+		"admin.allStatuses": "全部状态",
+		"admin.allKinds": "全部类型",
+		"admin.kindFile": "文件",
+		"admin.kindText": "文本",
+		"admin.headerFile": "文件",
+		"admin.headerSize": "大小",
+		"admin.headerCounts": "次数",
+		"admin.headerCreated": "创建时间",
+		"admin.headerExpires": "过期时间",
+		"admin.headerSource": "上传来源",
+		"admin.headerBrowser": "浏览器",
+		"admin.headerActions": "操作",
+		"admin.events": "事件",
+		"admin.readonly": "只读",
+		"admin.actions": "操作",
+		"admin.page": "第 {page} / {totalPages} 页",
+		"admin.prevPage": "上一页",
+		"admin.nextPage": "下一页",
+		"admin.maxDownloads": "最大次数",
+		"admin.usedDownloads": "已用次数",
+		"admin.currentStatus": "当前状态：{status}",
+		"admin.currentCounts": "当前次数：{downloadCount} / {maxDownloads}",
+		"admin.deletedReason": "删除原因：{reason}",
+		"admin.saving": "保存中",
+		"admin.saveCounts": "保存次数",
+		"admin.listFailed": "后台列表读取失败。",
+		"admin.eventsFailed": "事件读取失败。",
+		"admin.demoReadonlyMessage": "演示模式下后台为只读。",
+		"admin.demoNoRevoke": "演示模式下不能撤回文件。",
+		"admin.demoNoCounts": "演示模式下不能修改下载次数。",
+		"admin.invalidCounts": "次数必须是有效整数。",
+		"admin.countExceeded": "已用次数不能大于最大次数。",
+		"admin.countsFailed": "次数修改失败。",
+		"admin.countsUpdated": "次数已更新。",
+		"event.upload": "上传",
+		"event.download": "下载",
+		"event.admin_revoke": "后台撤回",
+		"event.admin_counts_update": "次数修改",
+	},
+	en: {
+		"site.title": "File Delivery Locker",
+		"site.description": "Anonymous file handoff powered by Cloudflare R2 and D1",
+		"language.label": "Language",
+		"language.zh": "中文",
+		"language.en": "English",
+		"language.switch": "Switch language",
+		"footer.brand": "File Delivery Locker",
+		"footer.copy": "Anonymous file and text handoff powered by Cloudflare R2 and D1.",
+		"common.forever": "Forever",
+		"common.unlimited": "Unlimited",
+		"common.unknown": "Unknown",
+		"common.unknownIp": "Unknown IP",
+		"common.copy": "Copied.",
+		"common.copyNamed": "Copy {label}",
+		"common.close": "Close",
+		"common.loading": "Loading",
+		"common.none": "No records yet",
+		"common.noEvents": "No events yet",
+		"auth.password": "Password",
+		"auth.accessPassword": "Access Password",
+		"auth.adminPassword": "Admin Password",
+		"auth.enterSite": "Enter Site",
+		"auth.enterAdmin": "Enter Admin",
+		"auth.verifying": "Verifying",
+		"auth.passwordIncorrect": "Incorrect password.",
+		"auth.adminPasswordIncorrect": "Incorrect admin password.",
+		"upload.title": "Send",
+		"upload.demoCopy": "Demo mode lets you view and pick up items only",
+		"upload.textCopy": "Place a text note in the locker",
+		"upload.fileCopy": "Choose a file to place in the locker",
+		"upload.notSelected": "None selected",
+		"upload.modeFile": "Upload file",
+		"upload.modeText": "Store text",
+		"upload.switchKind": "Switch delivery type",
+		"upload.textPlaceholder": "Enter plain text to store",
+		"upload.dropTextFile": "Drop a text file",
+		"upload.chooseTextFile": "Choose text file",
+		"upload.demoNoUpload": "Uploads disabled in demo",
+		"upload.chooseFile": "Choose file",
+		"upload.expiry": "Retention",
+		"upload.downloadLimit": "Download limit",
+		"upload.unlimitedTimes": "Unlimited",
+		"upload.demoReadonly": "Demo mode is read-only",
+		"upload.uploading": "Uploading",
+		"upload.submit": "Place in Locker",
+		"upload.pickupCode": "Pickup code",
+		"upload.manageCode": "Manage code",
+		"upload.pickupUrl": "Pickup link",
+		"upload.textFileName": "stored-text.txt",
+		"upload.expiry1Hour": "1 hour",
+		"upload.expiry24Hours": "24 hours",
+		"upload.expiry7Days": "7 days",
+		"message.demoNoText": "Text storage is disabled in demo mode.",
+		"message.textFileOnly": "Please drop a text file.",
+		"message.textTooLarge": "Text must be 256 KB or less.",
+		"message.emptyTextFile": "The text file is empty.",
+		"message.textLoaded": "Text file loaded.",
+		"message.textReadFailed": "Failed to read the text file.",
+		"message.demoNoUpload": "Uploads and text storage are disabled in demo mode.",
+		"message.invalidDownloadCount": "Enter an integer greater than 0 for the download limit.",
+		"message.enterText": "Enter the text you want to store.",
+		"message.chooseFile": "Choose a file.",
+		"message.fileTooLarge": "File must be 100 MB or less.",
+		"message.uploadFailed": "Upload failed.",
+		"message.textStored": "Text is in the locker.",
+		"message.fileStored": "File is in the locker.",
+		"message.enterPickupCode": "Enter a 6-character pickup code.",
+		"message.powInitial": "Completing human check...",
+		"message.powWidgetInitial": "Human check",
+		"message.powWidgetVerifying": "Verifying...",
+		"message.powWidgetSolved": "Verified",
+		"message.powWidgetError": "Verification failed",
+		"message.powProgress": "Completing human check {progress}%",
+		"message.queryPickup": "Looking up pickup code...",
+		"message.queryFailed": "Lookup failed.",
+		"message.notFound": "No file was found for this code.",
+		"message.previewFailed": "Text preview failed.",
+		"message.powFailed": "Human check failed. Please try again.",
+		"message.statsFailed": "Failed to read stats.",
+		"message.enterManageCode": "Enter a manage code.",
+		"message.revokeFailed": "Revoke failed.",
+		"message.revoked": "File revoked.",
+		"message.queryFirst": "Look up a valid pickup code first.",
+		"message.downloadFailed": "Download failed.",
+		"pickup.title": "Pick Up",
+		"pickup.copy": "Enter a pickup code to view file status",
+		"pickup.searching": "Searching",
+		"pickup.search": "Find File",
+		"pickup.remaining": "Remaining",
+		"pickup.expires": "Expires",
+		"pickup.preview": "Text preview",
+		"pickup.remainingTimes": "{count} remaining",
+		"pickup.loadingText": "Loading text...",
+		"pickup.copyText": "Copy Text",
+		"pickup.downloading": "Downloading",
+		"pickup.download": "Download File",
+		"pickup.inputLabel": "Pickup code",
+		"pickup.charLabel": "Pickup code character {index}",
+		"status.available": "Available",
+		"status.deleted": "Revoked",
+		"status.depleted": "Limit reached",
+		"status.expired": "Expired",
+		"admin.manageTitle": "Manage",
+		"admin.manageCopy": "Revoke a file with its manage code",
+		"admin.manageCode": "Manage code",
+		"admin.managePlaceholder": "Shown once after creation",
+		"admin.revoking": "Revoking",
+		"admin.revokeFile": "Revoke File",
+		"admin.title": "Admin",
+		"admin.metaTitle": "Admin - File Delivery Locker",
+		"admin.disabled": "Admin is not enabled",
+		"admin.configurePassword": "Configure ADMIN_PASSWORD first.",
+		"admin.demoPrefix": "Demo mode read-only · ",
+		"admin.totalUploads": "{total} upload records",
+		"admin.backHome": "Back to Site",
+		"admin.search": "Search",
+		"admin.searchPlaceholder": "File name, ID, or IP",
+		"admin.status": "Status",
+		"admin.kind": "Type",
+		"admin.allStatuses": "All statuses",
+		"admin.allKinds": "All types",
+		"admin.kindFile": "File",
+		"admin.kindText": "Text",
+		"admin.headerFile": "File",
+		"admin.headerSize": "Size",
+		"admin.headerCounts": "Counts",
+		"admin.headerCreated": "Created",
+		"admin.headerExpires": "Expires",
+		"admin.headerSource": "Upload source",
+		"admin.headerBrowser": "Browser",
+		"admin.headerActions": "Actions",
+		"admin.events": "Events",
+		"admin.readonly": "Read-only",
+		"admin.actions": "Actions",
+		"admin.page": "Page {page} / {totalPages}",
+		"admin.prevPage": "Previous",
+		"admin.nextPage": "Next",
+		"admin.maxDownloads": "Max downloads",
+		"admin.usedDownloads": "Used downloads",
+		"admin.currentStatus": "Current status: {status}",
+		"admin.currentCounts": "Current counts: {downloadCount} / {maxDownloads}",
+		"admin.deletedReason": "Delete reason: {reason}",
+		"admin.saving": "Saving",
+		"admin.saveCounts": "Save Counts",
+		"admin.listFailed": "Failed to read admin list.",
+		"admin.eventsFailed": "Failed to read events.",
+		"admin.demoReadonlyMessage": "Admin is read-only in demo mode.",
+		"admin.demoNoRevoke": "Files cannot be revoked in demo mode.",
+		"admin.demoNoCounts": "Download counts cannot be changed in demo mode.",
+		"admin.invalidCounts": "Counts must be valid integers.",
+		"admin.countExceeded": "Used downloads cannot exceed max downloads.",
+		"admin.countsFailed": "Failed to update counts.",
+		"admin.countsUpdated": "Counts updated.",
+		"event.upload": "Upload",
+		"event.download": "Download",
+		"event.admin_revoke": "Admin revoke",
+		"event.admin_counts_update": "Counts update",
+	},
+} as const;
+
+type TranslationKey = keyof typeof dictionaries.zh;
+type TranslationValues = Record<string, string | number>;
+
+type I18nContextValue = {
+	language: Language;
+	locale: string;
+	setLanguage: (language: Language) => void;
+	t: (key: TranslationKey, values?: TranslationValues) => string;
+};
+
+const I18nContext = createContext<I18nContextValue | null>(null);
+
+function isLanguage(value: string | null): value is Language {
+	return value === "zh" || value === "en";
+}
+
+function interpolate(template: string, values?: TranslationValues) {
+	if (!values) {
+		return template;
+	}
+
+	return template.replace(/\{(\w+)\}/g, (match, key) => String(values[key] ?? match));
+}
+
+export function LanguageProvider({ children }: { children: ReactNode }) {
+	const [language, setLanguageState] = useState<Language>("zh");
+	const [hasLoadedLanguage, setHasLoadedLanguage] = useState(false);
+
+	const value = useMemo<I18nContextValue>(() => {
+		const t = (key: TranslationKey, values?: TranslationValues) => interpolate(dictionaries[language][key], values);
+		return {
+			language,
+			locale: language === "zh" ? "zh-CN" : "en-US",
+			setLanguage: setLanguageState,
+			t,
+		};
+	}, [language]);
+
+	useEffect(() => {
+		const storedLanguage = window.localStorage.getItem(languageStorageKey);
+		if (isLanguage(storedLanguage)) {
+			setLanguageState(storedLanguage);
+		}
+		setHasLoadedLanguage(true);
+	}, []);
+
+	useEffect(() => {
+		if (!hasLoadedLanguage) {
+			return;
+		}
+
+		window.localStorage.setItem(languageStorageKey, language);
+		document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+		document.title = window.location.pathname.startsWith("/admin") ? value.t("admin.metaTitle") : value.t("site.title");
+	}, [hasLoadedLanguage, language, value]);
+
+	return (
+		<I18nContext.Provider value={value}>
+			{children}
+		</I18nContext.Provider>
+	);
+}
+
+export function useI18n() {
+	const context = useContext(I18nContext);
+	if (!context) {
+		throw new Error("useI18n must be used within LanguageProvider");
+	}
+
+	return context;
+}

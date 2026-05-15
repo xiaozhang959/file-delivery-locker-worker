@@ -1,6 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
+import { useI18n } from "../i18n";
 
 type AdminPanelProps = {
 	busy: boolean;
@@ -10,20 +11,22 @@ type AdminPanelProps = {
 };
 
 export function AdminPanel({ busy, manageCode, onManageCodeChange, onSubmit }: AdminPanelProps) {
+	const { t } = useI18n();
+
 	return (
 		<form className="panel admin-panel flex flex-col gap-5 w-full" onSubmit={onSubmit}>
 			<div>
-				<h2>管理</h2>
-				<p className="panel-copy">使用管理码撤回文件</p>
+				<h2>{t("admin.manageTitle")}</h2>
+				<p className="panel-copy">{t("admin.manageCopy")}</p>
 			</div>
 			<label className="field flex flex-col gap-2">
-				<span>管理码</span>
+				<span>{t("admin.manageCode")}</span>
 				<input
 					className="h-[42px] w-full"
 					autoCapitalize="characters"
 					value={manageCode}
 					onChange={(event) => onManageCodeChange(event.target.value.toUpperCase())}
-					placeholder="创建后显示一次"
+					placeholder={t("admin.managePlaceholder")}
 				/>
 			</label>
 			<button
@@ -32,7 +35,7 @@ export function AdminPanel({ busy, manageCode, onManageCodeChange, onSubmit }: A
 				type="submit"
 			>
 				<span aria-hidden="true">×</span>
-				{busy ? "撤回中" : "撤回文件"}
+				{busy ? t("admin.revoking") : t("admin.revokeFile")}
 			</button>
 		</form>
 	);

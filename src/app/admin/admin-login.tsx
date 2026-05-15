@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import { useI18n } from "../i18n";
 import { readApiJson } from "../components/api-json";
 
 type AuthResponse = {
@@ -8,6 +9,7 @@ type AuthResponse = {
 };
 
 export default function AdminLogin() {
+	const { t } = useI18n();
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -25,14 +27,14 @@ export default function AdminLogin() {
 				},
 				body: JSON.stringify({ password }),
 			});
-			const data = await readApiJson<AuthResponse>(response, "后台密码不正确。");
+			await readApiJson<AuthResponse>(response, t("auth.adminPasswordIncorrect"));
 			if (!response.ok) {
-				throw new Error(data.error ?? "后台密码不正确。");
+				throw new Error(t("auth.adminPasswordIncorrect"));
 			}
 
 			window.location.reload();
 		} catch (authError) {
-			setError(authError instanceof Error ? authError.message : "后台密码不正确。");
+			setError(authError instanceof Error ? authError.message : t("auth.adminPasswordIncorrect"));
 		} finally {
 			setBusy(false);
 		}
@@ -42,9 +44,9 @@ export default function AdminLogin() {
 		<main className="app-shell min-h-screen">
 			<section className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col items-center justify-center gap-10 px-5 pt-6 pb-16 sm:px-8 min-[960px]:px-10">
 				<form className="panel panel-feature flex w-[min(100%,420px)] flex-col gap-5" onSubmit={enterAdmin}>
-					<h2>管理后台</h2>
+					<h2>{t("admin.title")}</h2>
 					<label className="field flex flex-col gap-2">
-						<span>后台密码</span>
+						<span>{t("auth.adminPassword")}</span>
 						<input
 							className="h-[42px] w-full"
 							autoComplete="current-password"
@@ -60,7 +62,7 @@ export default function AdminLogin() {
 						disabled={busy}
 						type="submit"
 					>
-						{busy ? "验证中" : "进入后台"}
+						{busy ? t("auth.verifying") : t("auth.enterAdmin")}
 					</button>
 				</form>
 			</section>

@@ -27,12 +27,12 @@ export function formatCount(value: number) {
 	return String(value);
 }
 
-export function formatTime(value: string | null) {
+export function formatTime(value: string | null, locale = "zh-CN", emptyLabel = "永久") {
 	if (value === null) {
-		return "永久";
+		return emptyLabel;
 	}
 
-	return new Intl.DateTimeFormat("zh-CN", {
+	return new Intl.DateTimeFormat(locale, {
 		dateStyle: "short",
 		timeStyle: "short",
 	}).format(new Date(value));
