@@ -1,46 +1,84 @@
-# 开发方式
+# 开发文档
+
+这份文档面向本地开发和调试。项目主体是一个运行在 Cloudflare Workers 上的 Next.js 应用，使用 R2 保存文件正文，使用 D1 保存投递记录、登录会话、PoW challenge、取件访问 token 和审计事件。
 
 ## 环境准备
 
-本项目使用 Bun 作为包管理器和脚本运行器。首次进入项目后先安装依赖：
+需要准备：
+
+- Bun
+- Cloudflare 账号
+- Wrangler CLI
+
+项目依赖中已经包含 `wrangler`，一般直接用 `bunx wrangler` 调用即可。
+
+首次进入项目后安装依赖：
 
 ```bash
 bun install
 ```
 
-如果需要使用 Cloudflare 绑定、本地 D1、R2 或 Worker 运行时预览，请确保已安装并可使用 Wrangler。项目依赖里已经包含 `wrangler`，可以直接通过 `bunx wrangler` 调用。
+如果后续需要执行远程资源准备或部署相关命令，需要先登录 Cloudflare：
+
+```bash
+bunx wrangler login
+```
 
 ## 本地配置
 
-开发时重点检查 `wrangler.jsonc` 这些配置：
+项目使用根目录的 `wrangler.jsonc` 作为本地开发配置。开发时重点关注这些字段：
 
-- `name`：本地 Worker 名称，可使用默认项目名或自定义名称。
-- `services[0].service`：和 `name` 保持一致。
-- `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，这是代码访问 R2 的变量名。
-- `d1_databases[0].binding`：保持为 `DB`，这是代码访问 D1 的变量名。
-- `d1_databases[0].database_name`：本地迁移命令中使用的数据库名称。
-- `secrets.required`：生产部署必需的 Secret 名称，包含 `SITE_PASSWORD`、`ADMIN_PASSWORD` 和 `PICKUP_CODE_PEPPER`。
-- `vars.DEMO_MODE`：只读演示模式；本地调试写入逻辑时建议保持 `false`。
+- `name`：Worker 名称。
+- `services[0].service`：自引用 service binding，需要和 `name` 保持一致。
+- `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，代码通过 `env.FILE_BUCKET` 访问 R2。
+- `d1_databases[0].binding`：保持为 `DB`，代码通过 `env.DB` 访问 D1。
+- `d1_databases[0].migrations_dir`：保持为 `migrations`。
+- `vars.DEMO_MODE`：只读演示模式；开发写入流程时建议保持 `false`。
+- `secrets.required`：生产环境必需的 Secret 名称，包括 `SITE_PASSWORD`、`ADMIN_PASSWORD`、`PICKUP_CODE_PEPPER`。
 
-`binding` 是代码里的变量名，不要改成资源真实名称。项目通过 `env.FILE_BUCKET` 访问 R2，通过 `env.DB` 访问 D1。
-
-本地开发不要把密码写进 `wrangler.jsonc`。可以复制 `.dev.vars.example` 为 `.dev.vars`，再填入只在本机使用的密码：
+不要把本地密码写进 `wrangler.jsonc`。复制 `.dev.vars.example`：
 
 ```bash
 cp .dev.vars.example .dev.vars
 ```
 
-## 初始化本地 D1
+然后按需修改 `.dev.vars`：
 
-复制配置后，执行本地数据库迁移：
-
-```bash
-bunx wrangler d1 migrations apply file-delivery-locker-worker --local
+```text
+SITE_PASSWORD=change-me-site-password
+ADMIN_PASSWORD=change-me-admin-password
+PICKUP_CODE_PEPPER=change-me-long-random-pickup-code-pepper
 ```
 
-如果你修改了 `wrangler.jsonc` 里的 `database_name`，把命令中的 `file-delivery-locker` 替换成对应名称。
+`PICKUP_CODE_PEPPER` 用于生成取件码 HMAC 哈希。本地可以使用任意长字符串；生产环境必须使用高熵随机值，并且不要在活跃投递过期前轮换。
+
+## 初始化本地 D1
+
+执行本地数据库创建:
+
+```bash
+bunx wrangler d1 create file-delivery-locker
+```
+
+执行本地数据库迁移：
+
+```bash
+bunx wrangler d1 migrations apply file-delivery-locker --local
+```
+
+如果你修改了 `wrangler.jsonc` 中的 `name` 或 D1 数据库名称，请把命令里的 `file-delivery-locker` 替换成对应名称。
+
+当前迁移会创建和维护这些核心表：
+
+- `file_deliveries`：投递记录。
+- `delivery_events`：上传、下载、后台操作事件。
+- `cap_challenges`、`cap_tokens`：Cap.js Proof-of-Work 数据。
+- `pickup_pow_failures`、`pickup_access_tokens`：取件防枚举和短期访问 token。
+- `auth_sessions`、`auth_login_failures`：站点和后台登录会话、登录失败限制。
 
 ## 启动开发服务
+
+启动 Next.js 开发服务器：
 
 ```bash
 bun run dev
@@ -48,75 +86,117 @@ bun run dev
 
 打开 http://localhost:3000。
 
-`next.config.ts` 已调用 `initOpenNextCloudflareForDev()`，因此 `next dev` 中可以通过 OpenNext 读取 Cloudflare 绑定。开发前请先完成 `wrangler.jsonc` 配置和本地 D1 迁移，否则上传、取件或后台接口可能会提示绑定或数据表不可用。
+`next.config.ts` 已调用 `initOpenNextCloudflareForDev()`，所以 `next dev` 中可以读取 Cloudflare 绑定。本地开发前请确认已经配置 `.dev.vars` 并执行本地 D1 迁移，否则上传、取件、登录或后台接口可能会提示绑定、Secret 或数据表不可用。
 
 常用页面：
 
 - `/`：文件/文本寄存、取件、撤回入口。
-- `/admin`：管理后台，需要配置 `ADMIN_PASSWORD`；演示模式下可只读进入。
+- `/admin`：管理后台，需要配置 `ADMIN_PASSWORD`。
 
 ## 本地运行时预览
 
-普通开发使用 `bun run dev` 即可。如果需要更接近 Cloudflare Workers 的运行方式，可以使用 OpenNext 预览：
+普通开发使用 `bun run dev` 即可。需要更接近 Cloudflare Workers 的运行方式时，可以使用 OpenNext 预览：
 
 ```bash
 bun run preview
 ```
 
-这个命令会先构建 OpenNext 产物，再在本地预览 Worker 行为，适合检查 R2、D1、静态资源和 API 路由在 Cloudflare 运行时中的表现。
+这个命令会先构建 OpenNext 产物，再在本地预览 Worker 行为，适合检查 R2、D1、静态资源、API 路由和 Cloudflare 运行时差异。
 
 ## 常用脚本
 
 ```bash
 bun run dev        # 启动 Next.js 开发服务
-bun run build      # Next.js 构建
+bun run build      # 执行 Next.js 构建
 bun run preview    # OpenNext 构建并本地预览 Cloudflare Worker
 bun run cf:prepare # 检查/创建远程 R2 和 D1，并生成部署用 Wrangler 配置
-bun run cf-typegen # 生成 Cloudflare Env 类型
+bun run cf-typegen # 根据 Wrangler 配置生成 Cloudflare Env 类型
 ```
 
-`bun run cf:prepare` 会生成 `.wrangler/deploy-wrangler.jsonc`。这个文件只用于远程部署，不需要提交；如果同名 D1 已存在但不是空库，也不是本项目结构，脚本会停止以避免误用。
+`bun run cf:prepare` 会读取 `wrangler.jsonc`，检查或创建远程 R2 bucket 和 D1 database，然后生成 `.wrangler/deploy-wrangler.jsonc`。这个文件用于部署流程，不需要提交。如果同名 D1 已存在但不像本项目数据库，脚本会停止，避免误用其他数据库。
 
-修改 `wrangler.jsonc` 中的绑定、变量或资源配置后，可以重新生成 Cloudflare 环境类型：
+修改 Cloudflare 绑定、变量或资源配置后，可以重新生成类型：
 
 ```bash
 bun run cf-typegen
 ```
 
-# 配置说明
+## 关键开发流程
 
-`SITE_PASSWORD` 为空时，首页和普通 API 不需要密码；设置后，浏览器会保存一个 7 天有效的服务端会话 Cookie。修改密码后已有会话会失效。
+### 站点登录
 
-`ADMIN_PASSWORD` 为空时，`/admin` 后台不可用；设置后，后台服务端会话 Cookie 有效期为 8 小时。
+配置 `SITE_PASSWORD` 后，首页和普通 API 需要先完成站点登录。登录成功后会创建服务端会话，并通过 HttpOnly Cookie 保存登录态；站点会话有效期为 7 天。
 
-`PICKUP_CODE_PEPPER` 用于对短取件码做 HMAC 哈希。生产环境必须配置高熵随机值；不要在活跃投递过期前轮换，否则用旧 Pepper 创建的 HMAC 取件码无法匹配；历史 SHA-256 取件码仍可兼容查询。
+### 后台登录
 
-`DEMO_MODE` 开启后，首页无需密码，且系统进入只读演示状态：不能上传文件、寄存文本、撤回文件、修改下载次数、读取文本内容或下载文件。后台仍需 `ADMIN_PASSWORD` 登录。
+配置 `ADMIN_PASSWORD` 后可以访问 `/admin`。后台登录成功后同样创建服务端会话；后台会话有效期为 8 小时。
 
-# 项目结构
+### 取件校验
+
+取件查询不是直接访问投递记录，而是先完成 Cap.js Proof-of-Work：
+
+1. 调用 `/api/pow/challenge` 创建 challenge。
+2. 前端 Cap widget 计算 solutions。
+3. 调用 `/api/pow/redeem` 兑换 `capToken`。
+4. 查询 `/api/deliveries/<pickupCode>` 时携带 `x-cap-token`。
+5. 查询成功后接口返回 `pickupAccessToken`。
+6. 文本预览和文件下载需要携带 `x-pickup-access-token`。
+
+`capToken` 和 `pickupAccessToken` 都是短期 token，默认有效期为 5 分钟。取件错误次数会在 15 分钟窗口内累计，并影响后续 PoW 难度。
+
+### 创建投递
+
+创建投递需要站点登录和 CSRF 校验。浏览器端已在页面逻辑中处理这些细节；如果直接调 API，需要带上对应 Cookie 和 CSRF 请求头。
+
+投递约束：
+
+- 文件最大 100 MB。
+- 文本最大 256 KB。
+- `x-delivery-kind` 可为 `file` 或 `text`，缺省为 `file`。
+- `x-expires-in-hours` 可为 `0`、`1`、`24`、`168`；`0` 表示不过期。
+- `x-max-downloads` 可为 `0` 或大于等于 `1` 的整数；`0` 表示不限次数。
+
+上传时会计算内容哈希。相同文件或文本会复用已有 R2 对象，但仍会生成新的取件码和管理码。
+
+## 配置说明
+
+`SITE_PASSWORD` 为空时，首页和普通 API 不需要密码；设置后，修改密码会使已有站点会话失效。
+
+`ADMIN_PASSWORD` 为空时，`/admin` 后台不可用；设置后，修改密码会使已有后台会话失效。
+
+`PICKUP_CODE_PEPPER` 是短取件码 HMAC 的 Secret。生产环境必须配置；如果轮换，旧 Pepper 创建的 HMAC 取件码无法继续匹配。历史 SHA-256 取件码仍兼容查询。
+
+`DEMO_MODE` 开启后，首页无需密码，系统进入只读演示状态：不能上传文件、寄存文本、撤回文件、修改下载次数、读取文本内容或下载文件。后台仍需 `ADMIN_PASSWORD` 登录。
+
+## 项目结构
 
 ```text
-src/app/page.tsx                                  首页入口
-src/app/locker-app.tsx                            首页交互逻辑
-src/app/admin/page.tsx                            管理后台入口
-src/app/admin/admin-app.tsx                       管理后台交互逻辑
-src/app/api/deliveries/route.ts                   创建文件/文本投递
-src/app/api/deliveries/[pickupCode]/route.ts      查询投递状态
-src/app/api/deliveries/[pickupCode]/preview/route.ts   预览文本投递
-src/app/api/deliveries/[pickupCode]/download/route.ts  下载投递内容
-src/app/api/pow/challenge/route.ts                创建 Cap.js PoW challenge
-src/app/api/pow/redeem/route.ts                   兑换 Cap.js PoW token
-src/app/api/deliveries/manage/[manageCode]/route.ts    通过管理码撤回
-src/app/api/admin/deliveries/route.ts             后台投递列表
-src/app/api/admin/deliveries/[id]/events/route.ts 后台事件列表
-src/lib/locker.ts                                 校验、哈希、Cookie、Cloudflare 绑定和通用工具
-migrations/                                       D1 数据库迁移
-wrangler.example.jsonc                            Cloudflare 配置模板
+src/app/page.tsx                                      首页入口
+src/app/locker-app.tsx                                首页交互逻辑
+src/app/admin/page.tsx                                管理后台入口
+src/app/admin/admin-app.tsx                           管理后台交互逻辑
+src/app/api/site-auth/route.ts                        站点登录
+src/app/api/admin/auth/route.ts                       后台登录
+src/app/api/pow/challenge/route.ts                    创建 Cap.js PoW challenge
+src/app/api/pow/redeem/route.ts                       兑换 Cap.js PoW token
+src/app/api/deliveries/route.ts                       创建文件/文本投递
+src/app/api/deliveries/[pickupCode]/route.ts          查询投递状态并签发取件访问 token
+src/app/api/deliveries/[pickupCode]/preview/route.ts  预览文本投递
+src/app/api/deliveries/[pickupCode]/download/route.ts 下载投递内容
+src/app/api/deliveries/manage/[manageCode]/route.ts   通过管理码撤回
+src/app/api/admin/deliveries/route.ts                 后台投递列表
+src/app/api/admin/deliveries/[id]/events/route.ts     后台事件列表
+src/app/api/admin/deliveries/[id]/counts/route.ts     后台调整下载次数
+src/app/api/admin/deliveries/[id]/revoke/route.ts     后台撤回投递
+src/lib/locker.ts                                     校验、哈希、会话、PoW、Cloudflare 绑定和通用工具
+migrations/                                           D1 数据库迁移
+scripts/prepare-cloudflare-deploy.mjs                 Cloudflare 远程资源准备脚本
+wrangler.jsonc                                        Cloudflare 本地和部署基础配置
 ```
 
-# API 简要说明
+## API 调试示例
 
-创建投递：
+创建投递的请求形状如下。实际直接调用时还需要携带站点登录 Cookie 和 CSRF 请求头：
 
 ```bash
 curl -X POST http://localhost:3000/api/deliveries \
@@ -129,18 +209,22 @@ curl -X POST http://localhost:3000/api/deliveries \
   --data-binary @example.txt
 ```
 
-查询、下载和撤回：
+取件相关请求形状：
 
 ```bash
 curl -X POST http://localhost:3000/api/pow/challenge
+
 curl -X POST http://localhost:3000/api/pow/redeem \
   -H "content-type: application/json" \
   --data '{"token":"<challengeToken>","solutions":[0]}'
+
 curl http://localhost:3000/api/deliveries/<pickupCode> \
   -H "x-cap-token: <capToken>"
+
 curl -OJ http://localhost:3000/api/deliveries/<pickupCode>/download \
   -H "x-pickup-access-token: <pickupAccessToken>"
+
 curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
 ```
 
-`/api/pow/redeem` 的 `solutions` 需由 Cap widget 计算；上面的数组仅用于展示请求形状。取件查询成功后会返回 `pickupAccessToken`，有效期 5 分钟，文本预览和文件下载都需要携带该 token。
+`/api/pow/redeem` 的 `solutions` 需要由 Cap widget 计算，上面的数组只用于展示请求结构。取件查询成功后会返回 `pickupAccessToken`，文本预览和文件下载都需要携带这个 token。
