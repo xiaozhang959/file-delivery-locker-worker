@@ -1393,7 +1393,7 @@ export function serializeDelivery(row: DeliveryRow, now = Date.now()): DeliveryP
 		status = "deleted";
 	} else if (row.expires_at !== UNLIMITED_EXPIRY && row.expires_at <= now) {
 		status = "expired";
-	} else if (!hasUnlimitedDownloads && remainingDownloads < 1) {
+	} else if (!hasUnlimitedDownloads && row.download_count >= row.max_downloads) {
 		status = "depleted";
 	}
 
