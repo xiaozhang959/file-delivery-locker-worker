@@ -1,6 +1,6 @@
 # 快速部署
 
-首先你需要点击库页面右上角的 "Use this template", 创建一个私密的库
+首先你需要点击库页面右上角的 "Use this template", 创建一个库
 
 ![new repo](./image/new_repo.png)
 
@@ -8,21 +8,7 @@
 
 ![change jsonc](./image/change_jsonc.png)
 
-划到下面确认普通环境变量
-
-- `DEMO_MODE`: 演示模式-布尔类型: 默认 false, 开启后前台无需站点密码且保持只读；后台仍需 `ADMIN_PASSWORD` 登录，且不能读取文本内容或下载文件
-
-密码不要写入 `wrangler.jsonc`。部署前使用 Cloudflare Secrets 保存：
-
-```bash
-bunx wrangler secret put SITE_PASSWORD
-bunx wrangler secret put ADMIN_PASSWORD
-bunx wrangler secret put PICKUP_CODE_PEPPER
-```
-
-`SITE_PASSWORD` 是站点访问密码，`ADMIN_PASSWORD` 是后台密码。`PICKUP_CODE_PEPPER` 用于对短取件码做 HMAC 哈希，建议使用高熵随机字符串，并在活跃投递过期前保持不变。`wrangler.jsonc` 已把这些名称声明为必需 Secret，缺少时部署会失败。
-
-在侧边栏 -> 计算 -> workers 和 Pages 下创建一个应用程序
+切换到 CloudFlare 在侧边栏 -> 计算 -> workers 和 Pages 下创建一个应用程序
 
 选择 Continue with GitHub, 如果你没有绑定你的 GitHub 可能需要先绑定一下
 
@@ -33,6 +19,32 @@ bunx wrangler secret put PICKUP_CODE_PEPPER
 ![change command](./image/change_command.png)
 
 然后点击部署, 坐和放宽...
+
+然后你大概率会看到这个报错
+
+![secret error](./image/secret_error.png)
+
+这是因为 secret 这个东西没法在部署的准备阶段设置
+
+> 天杀的, 你既然不能设置就不要报错啊, 你这混蛋
+
+我们只需要点击上面的设置, 然后添加一下 `ADMIN_PASSWORD` `PICKUP_CODE_PEPPER` `SITE_PASSWORD`
+
+主要! 添加时需要修改类型为密钥
+
+这仨分别是:
+
+- ADMIN_PASSWORD      后台管理员密码
+- SITE_PASSWORD       用户访问网站用的密码
+- PICKUP_CODE_PEPPER  生成取件码时的pepper, 你不需要知道这是什么, 你只需要把你的脸放到键盘上然后滚动, 滚出一堆随机长字符串
+
+![add secret](./image/add_secret.png)
+
+添加完成点击部署
+
+然后切换到 R2 和 D1 的页面, 将上次自动创建的数据库和对象存储删了
+
+回到 workers 页面, 点击`最近的部署失败`, 再点击重试构建, 坐和放宽...
 
 等待 `✨ Success! Build completed.` 之后就可以点击访问! 你就可以开始使用了
 
