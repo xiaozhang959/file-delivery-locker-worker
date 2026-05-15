@@ -71,8 +71,11 @@ bun run preview
 bun run dev        # 启动 Next.js 开发服务
 bun run build      # Next.js 构建
 bun run preview    # OpenNext 构建并本地预览 Cloudflare Worker
+bun run cf:prepare # 检查/创建远程 R2 和 D1，并生成部署用 Wrangler 配置
 bun run cf-typegen # 生成 Cloudflare Env 类型
 ```
+
+`bun run cf:prepare` 会生成 `.wrangler/deploy-wrangler.jsonc`。这个文件只用于远程部署，不需要提交；如果同名 D1 已存在但不是空库，也不是本项目结构，脚本会停止以避免误用。
 
 修改 `wrangler.jsonc` 中的绑定、变量或资源配置后，可以重新生成 Cloudflare 环境类型：
 
