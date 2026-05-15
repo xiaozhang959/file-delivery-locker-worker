@@ -8,7 +8,7 @@ export type UploadResult = {
 	kind: DeliveryKind;
 	size: number;
 	maxDownloads: number;
-	expiresAt: string;
+	expiresAt: string | null;
 	pickupUrl: string;
 	downloadUrl: string;
 };
@@ -21,8 +21,8 @@ export type Delivery = {
 	size: number;
 	maxDownloads: number;
 	downloadCount: number;
-	remainingDownloads: number;
-	expiresAt: string;
+	remainingDownloads: number | null;
+	expiresAt: string | null;
 	createdAt: string;
 	status: "available" | "expired" | "deleted" | "depleted";
 };
@@ -39,7 +39,7 @@ export type ApiError = {
 
 export type TextPreview = {
 	text: string;
-	remainingDownloads: number;
+	remainingDownloads: number | null;
 };
 
 export type SiteStats = {

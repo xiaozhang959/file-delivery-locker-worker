@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
 	const id = crypto.randomUUID();
 	const createdAt = Date.now();
-	const expiresAt = createdAt + expiryHours * 60 * 60 * 1000;
+	const expiresAt = expiryHours === 0 ? 0 : createdAt + expiryHours * 60 * 60 * 1000;
 	const objectKey = `deliveries/${createdAt}/${id}`;
 	const pickup = await createUniquePickupCode(db);
 	const manageCode = createCode(16);
@@ -204,7 +204,7 @@ export async function POST(request: Request) {
 			kind: deliveryKind,
 			size,
 			maxDownloads,
-			expiresAt: new Date(expiresAt).toISOString(),
+			expiresAt: expiresAt === 0 ? null : new Date(expiresAt).toISOString(),
 			pickupUrl,
 			downloadUrl: pickupUrl,
 		},

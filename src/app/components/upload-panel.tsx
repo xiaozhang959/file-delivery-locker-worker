@@ -6,6 +6,7 @@ import { CodeBlock } from "./code-block";
 import type { DeliveryKind, UploadResult } from "./locker-types";
 
 const expiryOptions = [
+	{ label: "永久", value: 0 },
 	{ label: "1 小时", value: 1 },
 	{ label: "24 小时", value: 24 },
 	{ label: "7 天", value: 168 },
@@ -17,6 +18,7 @@ type UploadPanelProps = {
 	deliveryMode: DeliveryKind;
 	expiresInHours: number;
 	maxDownloadsInput: string;
+	maxDownloadsUnlimited: boolean;
 	selectedFileName: string | null;
 	textContent: string;
 	uploadBadge: string;
@@ -26,6 +28,7 @@ type UploadPanelProps = {
 	onExpiresInHoursChange: (value: number) => void;
 	onFileChange: (file: File | null) => void;
 	onMaxDownloadsInputChange: (value: string) => void;
+	onMaxDownloadsUnlimitedChange: (value: boolean) => void;
 	onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	onTextContentChange: (value: string) => void;
 	onTextFileChange: (file: File | null) => void;
@@ -37,6 +40,7 @@ export function UploadPanel({
 	deliveryMode,
 	expiresInHours,
 	maxDownloadsInput,
+	maxDownloadsUnlimited,
 	selectedFileName,
 	textContent,
 	uploadBadge,
@@ -46,6 +50,7 @@ export function UploadPanel({
 	onExpiresInHoursChange,
 	onFileChange,
 	onMaxDownloadsInputChange,
+	onMaxDownloadsUnlimitedChange,
 	onSubmit,
 	onTextContentChange,
 	onTextFileChange,
@@ -204,16 +209,24 @@ export function UploadPanel({
 				</label>
 				<label className="field flex flex-col gap-2">
 					<span>下载次数</span>
-					<input
-						className="h-[42px] w-full"
-						disabled={demoMode}
-						max={10}
-						min={1}
-						step={1}
-						type="number"
-						value={maxDownloadsInput}
-						onChange={(event) => onMaxDownloadsInputChange(event.target.value)}
-					/>
+					<div className="flex min-h-[42px] items-center gap-3">
+						<input
+							className="h-[42px] min-w-0 flex-1"
+							disabled={demoMode || maxDownloadsUnlimited}
+							type="number"
+							value={maxDownloadsInput}
+							onChange={(event) => onMaxDownloadsInputChange(event.target.value)}
+						/>
+						<label className="inline-flex h-[42px] flex-none items-center gap-2 text-sm">
+							<input
+								checked={maxDownloadsUnlimited}
+								disabled={demoMode}
+								type="checkbox"
+								onChange={(event) => onMaxDownloadsUnlimitedChange(event.target.checked)}
+							/>
+							<span>无限次</span>
+						</label>
+					</div>
 				</label>
 			</div>
 

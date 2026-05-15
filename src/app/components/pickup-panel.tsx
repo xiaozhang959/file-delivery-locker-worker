@@ -13,6 +13,15 @@ const statusText: Record<Delivery["status"], string> = {
 	expired: "已过期",
 };
 
+function formatDownloadLimit(delivery: Delivery, textPreview: TextPreview | null) {
+	if (delivery.maxDownloads === 0) {
+		return "无限";
+	}
+
+	const remaining = delivery.kind === "text" && textPreview ? textPreview.remainingDownloads : delivery.remainingDownloads;
+	return `${remaining ?? 0}/${delivery.maxDownloads}`;
+}
+
 type PickupPanelProps = {
 	busy: boolean;
 	delivery: Delivery | null;
@@ -69,9 +78,7 @@ export function PickupPanel({
 					<div className="grid grid-cols-2 gap-3 text-sm">
 						<Mini
 							label="剩余"
-							value={`${
-								delivery.kind === "text" && textPreview ? textPreview.remainingDownloads : delivery.remainingDownloads
-							}/${delivery.maxDownloads}`}
+							value={formatDownloadLimit(delivery, textPreview)}
 						/>
 						<Mini label="过期" value={formatTime(delivery.expiresAt)} />
 					</div>
@@ -80,7 +87,7 @@ export function PickupPanel({
 							<div className="text-preview flex flex-col gap-3">
 								<div className="flex items-center justify-between gap-3">
 									<span>文本预览</span>
-									{typeof textPreview?.remainingDownloads === "number" && <small>剩余 {textPreview.remainingDownloads} 次</small>}
+									{textPreview && <small>剩余 {textPreview.remainingDownloads === null ? "无限" : `${textPreview.remainingDownloads} 次`}</small>}
 								</div>
 								<pre>{textPreview?.text ?? "正在读取文本..."}</pre>
 								<button

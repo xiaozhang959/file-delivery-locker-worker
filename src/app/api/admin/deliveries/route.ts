@@ -1,4 +1,4 @@
-import { getCloudflareBindings, json, requireAdminAuth } from "@/lib/locker";
+import { UNLIMITED_DOWNLOADS, UNLIMITED_EXPIRY, getCloudflareBindings, json, requireAdminAuth } from "@/lib/locker";
 
 type AdminDeliveryRow = {
 	id: string;
@@ -89,17 +89,17 @@ export async function GET(request: Request) {
 				upload_country,
 				upload_region,
 				upload_city,
-				CASE
-					WHEN deleted_at IS NOT NULL THEN 'deleted'
-					WHEN expires_at <= ? THEN 'expired'
-					WHEN download_count >= max_downloads THEN 'depleted'
-					ELSE 'available'
-				END AS status
+					CASE
+						WHEN deleted_at IS NOT NULL THEN 'deleted'
+						WHEN expires_at != ? AND expires_at <= ? THEN 'expired'
+						WHEN max_downloads != ? AND download_count >= max_downloads THEN 'depleted'
+						ELSE 'available'
+					END AS status
 			FROM file_deliveries
 		) deliveries
 		${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
 	`;
-	const queryBindings = [now, ...bindings];
+	const queryBindings = [UNLIMITED_EXPIRY, now, UNLIMITED_DOWNLOADS, ...bindings];
 	const offset = (page - 1) * pageSize;
 
 	try {
@@ -145,8 +145,8 @@ function serializeAdminDelivery(row: AdminDeliveryRow) {
 		size: row.size,
 		maxDownloads: row.max_downloads,
 		downloadCount: row.download_count,
-		remainingDownloads: Math.max(0, row.max_downloads - row.download_count),
-		expiresAt: new Date(row.expires_at).toISOString(),
+		remainingDownloads: row.max_downloads === UNLIMITED_DOWNLOADS ? null : Math.max(0, row.max_downloads - row.download_count),
+		expiresAt: row.expires_at === UNLIMITED_EXPIRY ? null : new Date(row.expires_at).toISOString(),
 		createdAt: new Date(row.created_at).toISOString(),
 		deletedAt: row.deleted_at === null ? null : new Date(row.deleted_at).toISOString(),
 		deletedReason: row.deleted_reason,

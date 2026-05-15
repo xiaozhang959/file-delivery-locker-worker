@@ -2,6 +2,8 @@ import {
 	type DeliveryRow,
 	type LockerBucket,
 	type LockerDb,
+	UNLIMITED_DOWNLOADS,
+	UNLIMITED_EXPIRY,
 	cleanupPowArtifacts,
 	contentDisposition,
 	deleteStoredObjectIfUnreferenced,
@@ -113,20 +115,20 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 		});
 	}
 
-	const reachedLimit = row.download_count + 1 >= row.max_downloads;
+	const reachedLimit = row.max_downloads !== UNLIMITED_DOWNLOADS && row.download_count + 1 >= row.max_downloads;
 	const result = await db
 		.prepare(
 			`UPDATE file_deliveries
 			SET
 				download_count = download_count + 1,
-				deleted_at = CASE WHEN download_count + 1 >= max_downloads THEN ? ELSE deleted_at END,
-				deleted_reason = CASE WHEN download_count + 1 >= max_downloads THEN 'downloaded' ELSE deleted_reason END
+				deleted_at = CASE WHEN max_downloads != ? AND download_count + 1 >= max_downloads THEN ? ELSE deleted_at END,
+				deleted_reason = CASE WHEN max_downloads != ? AND download_count + 1 >= max_downloads THEN 'downloaded' ELSE deleted_reason END
 			WHERE id = ?
 				AND deleted_at IS NULL
-				AND expires_at > ?
-				AND download_count < max_downloads`,
+				AND (expires_at = ? OR expires_at > ?)
+				AND (max_downloads = ? OR download_count < max_downloads)`,
 		)
-		.bind(now, row.id, now)
+		.bind(UNLIMITED_DOWNLOADS, now, UNLIMITED_DOWNLOADS, row.id, UNLIMITED_EXPIRY, now, UNLIMITED_DOWNLOADS)
 		.run();
 
 	if (Number(result.meta.changes ?? 0) !== 1) {

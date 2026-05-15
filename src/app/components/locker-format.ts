@@ -27,7 +27,11 @@ export function formatCount(value: number) {
 	return String(value);
 }
 
-export function formatTime(value: string) {
+export function formatTime(value: string | null) {
+	if (value === null) {
+		return "永久";
+	}
+
 	return new Intl.DateTimeFormat("zh-CN", {
 		dateStyle: "short",
 		timeStyle: "short",

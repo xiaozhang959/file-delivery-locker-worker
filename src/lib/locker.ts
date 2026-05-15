@@ -6,8 +6,9 @@ export const MAX_TEXT_SIZE = 256 * 1024;
 export const PICKUP_CODE_LENGTH = 6;
 export const ALLOWED_EXPIRY_HOURS = new Set([1, 24, 168]);
 export const DELIVERY_KINDS = new Set(["file", "text"]);
+export const UNLIMITED_EXPIRY = 0;
+export const UNLIMITED_DOWNLOADS = 0;
 export const MIN_DOWNLOADS = 1;
-export const MAX_DOWNLOADS = 10;
 export const SITE_AUTH_COOKIE = "file_delivery_locker_site_auth";
 export const SITE_CSRF_COOKIE = "file_delivery_locker_site_csrf";
 export const SITE_AUTH_MAX_AGE = 60 * 60 * 24 * 7;
@@ -264,8 +265,8 @@ export type DeliveryPublic = {
 	size: number;
 	maxDownloads: number;
 	downloadCount: number;
-	remainingDownloads: number;
-	expiresAt: string;
+	remainingDownloads: number | null;
+	expiresAt: string | null;
 	createdAt: string;
 	status: "available" | "expired" | "deleted" | "depleted";
 };
@@ -1172,6 +1173,10 @@ export function parseDeliveryKind(request: Request): DeliveryKind | null {
 
 export function parseExpiryHours(request: Request) {
 	const value = Number(request.headers.get("x-expires-in-hours") ?? "24");
+	if (value === UNLIMITED_EXPIRY) {
+		return value;
+	}
+
 	if (!ALLOWED_EXPIRY_HOURS.has(value)) {
 		return null;
 	}
@@ -1181,7 +1186,11 @@ export function parseExpiryHours(request: Request) {
 
 export function parseMaxDownloads(request: Request) {
 	const value = Number(request.headers.get("x-max-downloads") ?? "1");
-	if (!Number.isInteger(value) || value < MIN_DOWNLOADS || value > MAX_DOWNLOADS) {
+	if (value === UNLIMITED_DOWNLOADS) {
+		return value;
+	}
+
+	if (!Number.isInteger(value) || value < MIN_DOWNLOADS) {
 		return null;
 	}
 
@@ -1258,12 +1267,12 @@ export async function findReusableStoredObject(db: LockerDb, bucket: LockerBucke
 			WHERE content_hash = ?
 				AND size = ?
 				AND deleted_at IS NULL
-				AND expires_at > ?
-				AND download_count < max_downloads
+				AND (expires_at = ? OR expires_at > ?)
+				AND (max_downloads = ? OR download_count < max_downloads)
 			ORDER BY created_at DESC
 			LIMIT 5`,
 		)
-		.bind(contentHash, size, now)
+		.bind(contentHash, size, UNLIMITED_EXPIRY, now, UNLIMITED_DOWNLOADS)
 		.all<{ storage_key: string }>();
 
 	for (const row of rows.results ?? []) {
@@ -1283,11 +1292,11 @@ export async function deleteStoredObjectIfUnreferenced(db: LockerDb, bucket: Loc
 			FROM file_deliveries
 			WHERE COALESCE(storage_key, object_key) = ?
 				AND deleted_at IS NULL
-				AND expires_at > ?
-				AND download_count < max_downloads
+				AND (expires_at = ? OR expires_at > ?)
+				AND (max_downloads = ? OR download_count < max_downloads)
 			LIMIT 1`,
 		)
-		.bind(storageKey, now)
+		.bind(storageKey, UNLIMITED_EXPIRY, now, UNLIMITED_DOWNLOADS)
 		.first<{ id: string }>();
 
 	if (!activeReference) {
@@ -1376,14 +1385,15 @@ function getCookieValue(header: string | null, name: string) {
 }
 
 export function serializeDelivery(row: DeliveryRow, now = Date.now()): DeliveryPublic {
-	const remainingDownloads = Math.max(0, row.max_downloads - row.download_count);
+	const hasUnlimitedDownloads = row.max_downloads === UNLIMITED_DOWNLOADS;
+	const remainingDownloads = hasUnlimitedDownloads ? null : Math.max(0, row.max_downloads - row.download_count);
 	let status: DeliveryPublic["status"] = "available";
 
 	if (row.deleted_at !== null) {
 		status = "deleted";
-	} else if (row.expires_at <= now) {
+	} else if (row.expires_at !== UNLIMITED_EXPIRY && row.expires_at <= now) {
 		status = "expired";
-	} else if (remainingDownloads < 1) {
+	} else if (!hasUnlimitedDownloads && remainingDownloads < 1) {
 		status = "depleted";
 	}
 
@@ -1396,7 +1406,7 @@ export function serializeDelivery(row: DeliveryRow, now = Date.now()): DeliveryP
 		maxDownloads: row.max_downloads,
 		downloadCount: row.download_count,
 		remainingDownloads,
-		expiresAt: new Date(row.expires_at).toISOString(),
+		expiresAt: row.expires_at === UNLIMITED_EXPIRY ? null : new Date(row.expires_at).toISOString(),
 		createdAt: new Date(row.created_at).toISOString(),
 		status,
 	};
@@ -1407,11 +1417,11 @@ export function isUnavailable(row: DeliveryRow, now = Date.now()) {
 		return "deleted";
 	}
 
-	if (row.expires_at <= now) {
+	if (row.expires_at !== UNLIMITED_EXPIRY && row.expires_at <= now) {
 		return "expired";
 	}
 
-	if (row.download_count >= row.max_downloads) {
+	if (row.max_downloads !== UNLIMITED_DOWNLOADS && row.download_count >= row.max_downloads) {
 		return "depleted";
 	}
 

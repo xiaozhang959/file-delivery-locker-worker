@@ -43,6 +43,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 	const [textContent, setTextContent] = useState("");
 	const [expiresInHours, setExpiresInHours] = useState(24);
 	const [maxDownloadsInput, setMaxDownloadsInput] = useState("1");
+	const [maxDownloadsUnlimited, setMaxDownloadsUnlimited] = useState(false);
 	const [pickupCode, setPickupCode] = useState("");
 	const [manageCode, setManageCode] = useState("");
 	const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -145,10 +146,10 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		let body: BodyInit;
 		let fileName: string;
 		let contentType: string;
-		const maxDownloads = Number(maxDownloadsInput);
+		const maxDownloads = maxDownloadsUnlimited ? 0 : Number(maxDownloadsInput);
 
-		if (!Number.isInteger(maxDownloads) || maxDownloads < 1 || maxDownloads > 10) {
-			notify("下载次数请输入 1 到 10 的整数。", "warning");
+		if (!maxDownloadsUnlimited && (!Number.isInteger(maxDownloads) || maxDownloads < 1)) {
+			notify("下载次数请输入大于 0 的整数。", "warning");
 			return;
 		}
 
@@ -409,6 +410,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 							deliveryMode={deliveryMode}
 							expiresInHours={expiresInHours}
 							maxDownloadsInput={maxDownloadsInput}
+							maxDownloadsUnlimited={maxDownloadsUnlimited}
 							selectedFileName={file?.name ?? null}
 							textContent={textContent}
 							uploadBadge={uploadBadge}
@@ -418,6 +420,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 							onExpiresInHoursChange={setExpiresInHours}
 							onFileChange={setFile}
 							onMaxDownloadsInputChange={setMaxDownloadsInput}
+							onMaxDownloadsUnlimitedChange={setMaxDownloadsUnlimited}
 							onSubmit={uploadDelivery}
 							onTextContentChange={setTextContent}
 							onTextFileChange={importTextFile}
