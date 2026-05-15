@@ -2,6 +2,8 @@
 
 首先你需要点击库页面右上角的 "Use this template", 创建一个库
 
+> 如果你希望能接收到之后的更新也可以选择 fork, 只是 "Use this template" 可以将库设置为私密
+
 ![new repo](./image/new_repo.png)
 
 打开 `./wrangler.jsonc` 文件, 修改 `name`, `services.service` 的值为你库的名字
