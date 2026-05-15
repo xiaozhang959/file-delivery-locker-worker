@@ -4,7 +4,8 @@
 	"private": true,
 	"scripts": {
 		"dev": "next dev",
-		"build": "next build",
+		"next:build": "next build",
+		"build": "node scripts/build.mjs",
 		"start": "next start",
 		"lint": "next lint",
 		"cf:prepare": "node scripts/prepare-cloudflare-deploy.mjs",
