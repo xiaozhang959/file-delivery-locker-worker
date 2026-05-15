@@ -16,8 +16,8 @@
 
 - 支持寄存单个文件, 最大 100 MB.
 - 支持寄存文本, 最大 256 KB, 并可在取件页直接预览和复制.
-- 保存期限可选 1 小时、24 小时或 7 天.
-- 最大下载/查看次数可设置为 1 到 10 次.
+- 保存期限可选 1 小时、24 小时、 7 天或者无期限.
+- 最大下载/查看次数可设置为 1 到 10 次或者无限.
 - 上传时计算内容哈希, 相同文件或文本会复用已有 R2 对象并生成新的取件码.
 - 取件码使用 Secret Pepper 做 HMAC-SHA-256 哈希, 管理码只保存 SHA-256 哈希, 不以明文入库.
 - 取件查询使用 Cap.js Proof-of-Work 防枚举, 且挑战难度会随错误次数递增.
@@ -49,8 +49,8 @@ A lightweight temporary file/text delivery locker built on Cloudflare Workers, R
 
 - Store a single file up to 100 MB.
 - Store text up to 256 KB, with direct preview and copy support on the pickup page.
-- Choose a retention period of 1 hour, 24 hours, or 7 days.
-- Configure a maximum download/view count from 1 to 10.
+- Choose a retention period of 1 hour, 24 hours, 7 days or unlimited.
+- Configure a maximum download/view count from 1 to 10 or unlimited.
 - Compute a content hash on upload, so identical files or text reuse the existing R2 object while still receiving a new pickup code.
 - Hash pickup codes with HMAC-SHA-256 using a secret pepper; store manage codes only as SHA-256 hashes, never in plaintext.
 - Protect pickup lookups from enumeration with Cap.js Proof-of-Work, with challenge difficulty increasing after repeated failures.
