@@ -55,3 +55,69 @@
 > 不要在意截图里面的错误
 
 如果你有自己的域名可以绑定到自己的域名上
+
+---
+
+# Quick Deployment
+
+First, click **Use this template** in the top-right corner of the repository page to create your own repository.
+
+> If you want to receive future updates, you can also fork the repository. The benefit of **Use this template** is that it lets you make the new repository private.
+
+![new repo](./image/new_repo.png)
+
+Open `./wrangler.jsonc`, then change `name` and `services.service` to match your repository name.
+
+![change jsonc](./image/change_jsonc.png)
+
+Go to Cloudflare, then use the sidebar to open **Compute** -> **Workers & Pages**, and create an application.
+
+Choose **Continue with GitHub**. If your GitHub account is not connected yet, Cloudflare may ask you to connect it first.
+
+![clone repo](./image/clone_repo.png)
+
+Select the repository you created earlier, then change the deploy command to:
+
+```bash
+bun run deploy
+```
+
+![change command](./image/change_command.png)
+
+Click deploy, then sit back for a moment.
+
+You will probably see this error:
+
+![secret error](./image/secret_error.png)
+
+This happens because secrets cannot be configured during the deployment preparation stage.
+
+Open the settings shown above, then add these secrets:
+
+- `ADMIN_PASSWORD`
+- `PICKUP_CODE_PEPPER`
+- `SITE_PASSWORD`
+
+Important: when adding them, set their type to **Secret**.
+
+These values mean:
+
+- `ADMIN_PASSWORD`: the admin console password.
+- `SITE_PASSWORD`: the password users need to access the site.
+- `PICKUP_CODE_PEPPER`: the pepper used when generating pickup-code hashes. You do not need to understand the internals; use a long, random string.
+
+![add secret](./image/add_secret.png)
+
+After adding the secrets, click deploy.
+
+Then go to the R2 and D1 pages, and delete the database and object storage bucket that were created during the failed deployment attempt.
+
+Return to the Workers page, click the most recent failed deployment, then click **Retry build**. Sit back again.
+
+When you see `✨ Success! Build completed.`, you can open the deployed site and start using it.
+
+![bind](./image/bind.png)
+
+> Ignore the error shown in the screenshot.
+
+If you own a custom domain, you can bind the Worker to that domain.

@@ -228,3 +228,236 @@ curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
 ```
 
 `/api/pow/redeem` 的 `solutions` 需要由 Cap widget 计算，上面的数组只用于展示请求结构。取件查询成功后会返回 `pickupAccessToken`，文本预览和文件下载都需要携带这个 token。
+
+---
+
+# Development Documentation
+
+This document is for local development and debugging. The project is a Next.js application running on Cloudflare Workers. It uses R2 to store file bodies and D1 to store delivery records, login sessions, PoW challenges, pickup access tokens, and audit events.
+
+## Prerequisites
+
+You need:
+
+- Bun
+- A Cloudflare account
+- Wrangler CLI
+
+The project dependencies already include `wrangler`, so in most cases you can run it through `bunx wrangler`.
+
+Install dependencies after entering the project for the first time:
+
+```bash
+bun install
+```
+
+If you later need to prepare remote resources or run deployment-related commands, log in to Cloudflare first:
+
+```bash
+bunx wrangler login
+```
+
+## Local Configuration
+
+The project uses the root-level `wrangler.jsonc` as the local development configuration. These fields are the important ones during development:
+
+- `name`: the Worker name.
+- `services[0].service`: the self-referential service binding. It must match `name`.
+- `r2_buckets[0].binding`: keep this as `FILE_BUCKET`; the code accesses R2 through `env.FILE_BUCKET`.
+- `d1_databases[0].binding`: keep this as `DB`; the code accesses D1 through `env.DB`.
+- `d1_databases[0].migrations_dir`: keep this as `migrations`.
+- `vars.DEMO_MODE`: read-only demo mode. Keep it `false` when developing write flows.
+- `secrets.required`: production-required secret names, including `SITE_PASSWORD`, `ADMIN_PASSWORD`, and `PICKUP_CODE_PEPPER`.
+
+Do not write local passwords into `wrangler.jsonc`. Copy `.dev.vars.example`:
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+Then edit `.dev.vars` as needed:
+
+```text
+SITE_PASSWORD=change-me-site-password
+ADMIN_PASSWORD=change-me-admin-password
+PICKUP_CODE_PEPPER=change-me-long-random-pickup-code-pepper
+```
+
+`PICKUP_CODE_PEPPER` is used to generate HMAC hashes for pickup codes. Locally, any long string is fine. In production, use a high-entropy random value and do not rotate it before active deliveries have expired.
+
+## Initialize Local D1
+
+Create the local database:
+
+```bash
+bunx wrangler d1 create file-delivery-locker
+```
+
+Apply local database migrations:
+
+```bash
+bunx wrangler d1 migrations apply file-delivery-locker --local
+```
+
+If you changed the `name` field or the D1 database name in `wrangler.jsonc`, replace `file-delivery-locker` in the commands above with the matching name.
+
+The current migrations create and maintain these core tables:
+
+- `file_deliveries`: delivery records.
+- `delivery_events`: upload, download, and admin-operation events.
+- `cap_challenges`, `cap_tokens`: Cap.js Proof-of-Work data.
+- `pickup_pow_failures`, `pickup_access_tokens`: pickup enumeration protection and short-lived access tokens.
+- `auth_sessions`, `auth_login_failures`: site/admin login sessions and login-failure throttling.
+
+## Start the Development Server
+
+Start the Next.js development server:
+
+```bash
+bun run dev
+```
+
+Open http://localhost:3000.
+
+`next.config.ts` calls `initOpenNextCloudflareForDev()`, so Cloudflare bindings are available inside `next dev`. Before local development, make sure `.dev.vars` is configured and local D1 migrations have been applied. Otherwise uploads, pickup, login, or admin APIs may report missing bindings, secrets, or tables.
+
+Common pages:
+
+- `/`: file/text storage, pickup, and revocation entry points.
+- `/admin`: admin console. Requires `ADMIN_PASSWORD`.
+
+## Local Runtime Preview
+
+For normal development, `bun run dev` is enough. If you need a runtime closer to Cloudflare Workers, use the OpenNext preview:
+
+```bash
+bun run preview
+```
+
+This command builds the OpenNext output first, then previews Worker behavior locally. It is useful for checking R2, D1, static assets, API routes, and Cloudflare runtime differences.
+
+## Common Scripts
+
+```bash
+bun run dev        # Start the Next.js development server
+bun run build      # Run the Next.js build
+bun run preview    # Build with OpenNext and preview the Cloudflare Worker locally
+bun run cf:prepare # Check/create remote R2 and D1 resources, then generate deployment Wrangler config
+bun run cf-typegen # Generate Cloudflare Env types from the Wrangler config
+```
+
+`bun run cf:prepare` reads `wrangler.jsonc`, checks or creates the remote R2 bucket and D1 database, then generates `.wrangler/deploy-wrangler.jsonc`. This file is used by deployment and does not need to be committed. If a D1 database with the same name already exists but does not look like this project's database, the script stops to avoid accidentally using the wrong database.
+
+After changing Cloudflare bindings, variables, or resource configuration, regenerate types:
+
+```bash
+bun run cf-typegen
+```
+
+## Key Development Flows
+
+### Site Login
+
+After `SITE_PASSWORD` is configured, the homepage and normal APIs require site login first. A successful login creates a server-side session and stores the login state in an HttpOnly cookie. Site sessions are valid for 7 days.
+
+### Admin Login
+
+After `ADMIN_PASSWORD` is configured, you can access `/admin`. Admin login also creates a server-side session. Admin sessions are valid for 8 hours.
+
+### Pickup Verification
+
+Pickup lookup does not directly read delivery records. It first completes a Cap.js Proof-of-Work flow:
+
+1. Call `/api/pow/challenge` to create a challenge.
+2. The frontend Cap widget computes solutions.
+3. Call `/api/pow/redeem` to exchange the result for a `capToken`.
+4. Include `x-cap-token` when querying `/api/deliveries/<pickupCode>`.
+5. After a successful lookup, the API returns a `pickupAccessToken`.
+6. Text preview and file download require `x-pickup-access-token`.
+
+Both `capToken` and `pickupAccessToken` are short-lived tokens. By default they are valid for 5 minutes. Failed pickup attempts are accumulated within a 15-minute window and affect later PoW difficulty.
+
+### Create a Delivery
+
+Creating a delivery requires site login and CSRF verification. The browser UI already handles these details. If you call the API directly, include the matching Cookie and CSRF request header.
+
+Delivery constraints:
+
+- Maximum file size: 100 MB.
+- Maximum text size: 256 KB.
+- `x-delivery-kind` can be `file` or `text`; it defaults to `file`.
+- `x-expires-in-hours` can be `0`, `1`, `24`, or `168`; `0` means no expiration.
+- `x-max-downloads` can be `0` or an integer greater than or equal to `1`; `0` means unlimited downloads/views.
+
+The upload flow computes a content hash. Identical files or text reuse an existing R2 object, but each delivery still receives a new pickup code and manage code.
+
+## Configuration Notes
+
+When `SITE_PASSWORD` is empty, the homepage and normal APIs do not require a password. After it is set, changing the password invalidates existing site sessions.
+
+When `ADMIN_PASSWORD` is empty, `/admin` is disabled. After it is set, changing the password invalidates existing admin sessions.
+
+`PICKUP_CODE_PEPPER` is the secret used by short pickup-code HMACs. It must be configured in production. If it is rotated, HMAC pickup codes created with the old pepper will no longer match. Historical SHA-256 pickup codes remain compatible with lookup.
+
+When `DEMO_MODE` is enabled, the homepage does not require a password and the system enters a read-only demo state: users cannot upload files, store text, revoke files, modify download counts, read text content, or download files. The admin console still requires `ADMIN_PASSWORD`.
+
+## Project Structure
+
+```text
+src/app/page.tsx                                      Homepage entry
+src/app/locker-app.tsx                                Homepage interaction logic
+src/app/admin/page.tsx                                Admin console entry
+src/app/admin/admin-app.tsx                           Admin console interaction logic
+src/app/api/site-auth/route.ts                        Site login
+src/app/api/admin/auth/route.ts                       Admin login
+src/app/api/pow/challenge/route.ts                    Create Cap.js PoW challenge
+src/app/api/pow/redeem/route.ts                       Redeem Cap.js PoW token
+src/app/api/deliveries/route.ts                       Create file/text delivery
+src/app/api/deliveries/[pickupCode]/route.ts          Query delivery status and issue pickup access token
+src/app/api/deliveries/[pickupCode]/preview/route.ts  Preview text delivery
+src/app/api/deliveries/[pickupCode]/download/route.ts Download delivery content
+src/app/api/deliveries/manage/[manageCode]/route.ts   Revoke through manage code
+src/app/api/admin/deliveries/route.ts                 Admin delivery list
+src/app/api/admin/deliveries/[id]/events/route.ts     Admin event list
+src/app/api/admin/deliveries/[id]/counts/route.ts     Admin download-count adjustment
+src/app/api/admin/deliveries/[id]/revoke/route.ts     Admin delivery revocation
+src/lib/locker.ts                                     Validation, hashing, sessions, PoW, Cloudflare bindings, and shared utilities
+migrations/                                           D1 database migrations
+scripts/prepare-cloudflare-deploy.mjs                 Cloudflare remote-resource preparation script
+wrangler.jsonc                                        Cloudflare local/deployment base configuration
+```
+
+## API Debugging Examples
+
+The request shape for creating a delivery is shown below. Direct API calls also need the site login Cookie and CSRF request header:
+
+```bash
+curl -X POST http://localhost:3000/api/deliveries \
+  -H "content-type: application/octet-stream" \
+  -H "x-content-type: application/octet-stream" \
+  -H "x-file-name: example.txt" \
+  -H "x-delivery-kind: file" \
+  -H "x-expires-in-hours: 24" \
+  -H "x-max-downloads: 1" \
+  --data-binary @example.txt
+```
+
+Pickup-related request shapes:
+
+```bash
+curl -X POST http://localhost:3000/api/pow/challenge
+
+curl -X POST http://localhost:3000/api/pow/redeem \
+  -H "content-type: application/json" \
+  --data '{"token":"<challengeToken>","solutions":[0]}'
+
+curl http://localhost:3000/api/deliveries/<pickupCode> \
+  -H "x-cap-token: <capToken>"
+
+curl -OJ http://localhost:3000/api/deliveries/<pickupCode>/download \
+  -H "x-pickup-access-token: <pickupAccessToken>"
+
+curl -X DELETE http://localhost:3000/api/deliveries/manage/<manageCode>
+```
+
+The `solutions` field for `/api/pow/redeem` must be computed by the Cap widget. The array above is only used to demonstrate the request shape. A successful pickup lookup returns `pickupAccessToken`, which is required for both text preview and file download.
