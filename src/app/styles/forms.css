@@ -55,7 +55,6 @@
 
 .dropzone span:first-of-type {
 	color: var(--primary);
-	font-family: var(--font-display);
 	font-size: 44px;
 	font-weight: 400;
 	line-height: 1;

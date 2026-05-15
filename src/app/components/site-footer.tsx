@@ -11,7 +11,7 @@ export function SiteFooter() {
 				<div className="flex max-w-[520px] items-start gap-3.5">
 					<img src="/logo.webp" alt="logo" className="w-16" />
 					<div>
-						<strong className="block font-[var(--font-display)] text-[28px] leading-[1.15] font-normal tracking-[-0.011em] text-[var(--on-dark)]">
+						<strong className="block text-[22px] leading-[1.3] font-medium text-[var(--on-dark)]">
 							{t("footer.brand")}
 						</strong>
 						<p className="mt-2 mb-0 text-sm leading-[1.55]">{t("footer.copy")}</p>
