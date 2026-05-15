@@ -9,8 +9,8 @@
 		"start": "next start",
 		"lint": "next lint",
 		"cf:prepare": "node scripts/prepare-cloudflare-deploy.mjs",
-		"deploy": "node scripts/prepare-cloudflare-deploy.mjs && opennextjs-cloudflare build -c .wrangler/deploy-wrangler.jsonc && opennextjs-cloudflare deploy -c .wrangler/deploy-wrangler.jsonc",
-		"upload": "node scripts/prepare-cloudflare-deploy.mjs && opennextjs-cloudflare build -c .wrangler/deploy-wrangler.jsonc && opennextjs-cloudflare upload -c .wrangler/deploy-wrangler.jsonc",
+		"deploy": "node scripts/deploy.mjs deploy",
+		"upload": "node scripts/deploy.mjs upload",
 		"preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
 		"cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
 	},
