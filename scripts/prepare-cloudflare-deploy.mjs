@@ -57,6 +57,12 @@ async function main() {
 
 	const generatedConfig = {
 		...config,
+		$schema: relativeToGeneratedConfig(config.$schema),
+		main: relativeToGeneratedConfig(config.main),
+		assets: {
+			...config.assets,
+			directory: relativeToGeneratedConfig(config.assets?.directory),
+		},
 		r2_buckets: [
 			{
 				...r2Binding,
@@ -68,6 +74,7 @@ async function main() {
 				...d1Binding,
 				database_name: databaseName,
 				database_id: d1Database.uuid,
+				migrations_dir: relativeToGeneratedConfig(d1Binding.migrations_dir),
 			},
 		],
 	};
@@ -276,4 +283,16 @@ function requireNonEmptyString(value, label) {
 	}
 
 	return value.trim();
+}
+
+function relativeToGeneratedConfig(value) {
+	if (typeof value !== "string" || !value.trim()) {
+		return value;
+	}
+
+	if (path.isAbsolute(value) || value.startsWith("../")) {
+		return value;
+	}
+
+	return path.posix.join("..", value.replaceAll("\\", "/"));
 }
