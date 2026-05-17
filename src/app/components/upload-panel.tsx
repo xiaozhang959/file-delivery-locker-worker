@@ -20,6 +20,7 @@ type UploadPanelProps = {
 	expiresInHours: number;
 	maxDownloadsInput: string;
 	maxDownloadsUnlimited: boolean;
+	guestAccessEnabled: boolean;
 	selectedFileName: string | null;
 	textContent: string;
 	uploadBadge: string;
@@ -30,6 +31,7 @@ type UploadPanelProps = {
 	onFileChange: (file: File | null) => void;
 	onMaxDownloadsInputChange: (value: string) => void;
 	onMaxDownloadsUnlimitedChange: (value: boolean) => void;
+	onGuestAccessEnabledChange: (value: boolean) => void;
 	onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	onTextContentChange: (value: string) => void;
 	onTextFileChange: (file: File | null) => void;
@@ -42,6 +44,7 @@ export function UploadPanel({
 	expiresInHours,
 	maxDownloadsInput,
 	maxDownloadsUnlimited,
+	guestAccessEnabled,
 	selectedFileName,
 	textContent,
 	uploadBadge,
@@ -52,6 +55,7 @@ export function UploadPanel({
 	onFileChange,
 	onMaxDownloadsInputChange,
 	onMaxDownloadsUnlimitedChange,
+	onGuestAccessEnabledChange,
 	onSubmit,
 	onTextContentChange,
 	onTextFileChange,
@@ -232,6 +236,20 @@ export function UploadPanel({
 				</label>
 			</div>
 
+			<label className="field inline-flex min-h-[42px] items-start gap-3">
+				<input
+					checked={guestAccessEnabled}
+					className="mt-1"
+					disabled={demoMode}
+					type="checkbox"
+					onChange={(event) => onGuestAccessEnabledChange(event.target.checked)}
+				/>
+				<span className="flex flex-col gap-1">
+					<span>{t("upload.guestAccess")}</span>
+					<small>{t("upload.guestAccessHint")}</small>
+				</span>
+			</label>
+
 			<button
 				className="primary-button inline-flex min-h-10 items-center justify-center gap-[9px] rounded-lg px-5 text-sm leading-none font-medium no-underline"
 				disabled={busy || demoMode}
@@ -246,6 +264,9 @@ export function UploadPanel({
 					<CodeBlock label={t("upload.pickupCode")} value={uploadResult.pickupCode} onCopy={onCopy} />
 					<CodeBlock label={t("upload.manageCode")} value={uploadResult.manageCode} onCopy={onCopy} />
 					<CodeBlock label={t("upload.pickupUrl")} value={uploadResult.pickupUrl} onCopy={onCopy} wide />
+					{uploadResult.guestDownloadUrl && (
+						<CodeBlock label={t("upload.guestDownloadUrl")} value={uploadResult.guestDownloadUrl} onCopy={onCopy} wide />
+					)}
 				</div>
 			)}
 		</form>

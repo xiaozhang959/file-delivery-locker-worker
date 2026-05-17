@@ -11,6 +11,7 @@ export type UploadResult = {
 	expiresAt: string | null;
 	pickupUrl: string;
 	downloadUrl: string;
+	guestDownloadUrl: string | null;
 };
 
 export type Delivery = {

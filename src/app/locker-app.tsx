@@ -45,6 +45,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 	const [expiresInHours, setExpiresInHours] = useState(24);
 	const [maxDownloadsInput, setMaxDownloadsInput] = useState("1");
 	const [maxDownloadsUnlimited, setMaxDownloadsUnlimited] = useState(false);
+	const [guestAccessEnabled, setGuestAccessEnabled] = useState(false);
 	const [pickupCode, setPickupCode] = useState("");
 	const [manageCode, setManageCode] = useState("");
 	const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -197,6 +198,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 					"x-delivery-kind": deliveryMode,
 					"x-expires-in-hours": String(expiresInHours),
 					"x-file-name": encodeURIComponent(fileName),
+					"x-guest-access-enabled": guestAccessEnabled ? "true" : "false",
 					"x-max-downloads": String(maxDownloads),
 				},
 				body,
@@ -410,6 +412,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 							demoMode={demoMode}
 							deliveryMode={deliveryMode}
 							expiresInHours={expiresInHours}
+							guestAccessEnabled={guestAccessEnabled}
 							maxDownloadsInput={maxDownloadsInput}
 							maxDownloadsUnlimited={maxDownloadsUnlimited}
 							selectedFileName={file?.name ?? null}
@@ -420,6 +423,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 							onDeliveryModeChange={setDeliveryMode}
 							onExpiresInHoursChange={setExpiresInHours}
 							onFileChange={setFile}
+							onGuestAccessEnabledChange={setGuestAccessEnabled}
 							onMaxDownloadsInputChange={setMaxDownloadsInput}
 							onMaxDownloadsUnlimitedChange={setMaxDownloadsUnlimited}
 							onSubmit={uploadDelivery}

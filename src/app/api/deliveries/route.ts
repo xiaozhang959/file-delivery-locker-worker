@@ -11,11 +11,13 @@ import {
 	getRequestSource,
 	getSafeFileName,
 	hashContentBytes,
+	hashGuestAccessToken,
 	hashManageCode,
 	json,
 	parseDeliveryKind,
 	parseContentLength,
 	parseExpiryHours,
+	parseGuestAccessEnabled,
 	parseMaxDownloads,
 	recordDeliveryEvent,
 	requireCsrf,
@@ -88,6 +90,7 @@ export async function POST(request: Request) {
 	const objectKey = `deliveries/${createdAt}/${id}`;
 	const pickup = await createUniquePickupCode(db);
 	const manageCode = createCode(16);
+	const guestAccessToken = parseGuestAccessEnabled(request) ? createCode(32) : null;
 	const contentType = deliveryKind === "text" ? "text/plain;charset=utf-8" : getContentType(request);
 	const source = getRequestSource(request);
 	let uploadedStorageKey: string | null = null;
@@ -130,6 +133,7 @@ export async function POST(request: Request) {
 					content_hash,
 					pickup_code_hash,
 					manage_code_hash,
+					guest_access_token_hash,
 					max_downloads,
 					download_count,
 					expires_at,
@@ -142,7 +146,7 @@ export async function POST(request: Request) {
 					upload_country,
 					upload_region,
 					upload_city
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.bind(
 				id,
@@ -155,6 +159,7 @@ export async function POST(request: Request) {
 				contentHash,
 				pickup.hash,
 				await hashManageCode(manageCode),
+				guestAccessToken ? await hashGuestAccessToken(guestAccessToken) : null,
 				maxDownloads,
 				expiresAt,
 				createdAt,
@@ -194,6 +199,9 @@ export async function POST(request: Request) {
 	const origin = new URL(request.url).origin;
 	const encodedPickupCode = encodeURIComponent(pickup.code);
 	const pickupUrl = `${origin}/?pickupCode=${encodedPickupCode}`;
+	const guestDownloadUrl = guestAccessToken
+		? `${origin}/guest/${encodeURIComponent(guestAccessToken)}`
+		: null;
 
 	return json(
 		{
@@ -206,7 +214,8 @@ export async function POST(request: Request) {
 			maxDownloads,
 			expiresAt: expiresAt === 0 ? null : new Date(expiresAt).toISOString(),
 			pickupUrl,
-			downloadUrl: pickupUrl,
+			downloadUrl: guestDownloadUrl ?? pickupUrl,
+			guestDownloadUrl,
 		},
 		201,
 	);

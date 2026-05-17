@@ -125,6 +125,7 @@ const fileDeliveryColumns: Record<string, string> = {
 	delivery_kind: "TEXT NOT NULL DEFAULT 'file'",
 	storage_key: "TEXT",
 	content_hash: "TEXT",
+	guest_access_token_hash: "TEXT",
 	upload_ip: "TEXT",
 	upload_user_agent: "TEXT",
 	upload_browser: "TEXT",
@@ -241,6 +242,7 @@ export type DeliveryRow = {
 	content_hash: string | null;
 	pickup_code_hash: string;
 	manage_code_hash: string;
+	guest_access_token_hash: string | null;
 	max_downloads: number;
 	download_count: number;
 	expires_at: number;
@@ -335,6 +337,7 @@ async function initializeDatabaseSchema(db: LockerDb) {
 				content_hash TEXT,
 				pickup_code_hash TEXT NOT NULL UNIQUE,
 				manage_code_hash TEXT NOT NULL UNIQUE,
+				guest_access_token_hash TEXT,
 				max_downloads INTEGER NOT NULL,
 				download_count INTEGER NOT NULL DEFAULT 0,
 				expires_at INTEGER NOT NULL,
@@ -488,6 +491,7 @@ async function createDatabaseIndexes(db: LockerDb) {
 		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_expires_at ON file_deliveries (expires_at)",
 		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_content_hash ON file_deliveries (content_hash, size)",
 		"CREATE INDEX IF NOT EXISTS idx_file_deliveries_storage_key ON file_deliveries (storage_key)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_file_deliveries_guest_access_token_hash ON file_deliveries (guest_access_token_hash)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_delivery_id ON delivery_events (delivery_id, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_created_at ON delivery_events (created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_delivery_events_action ON delivery_events (action)",
@@ -1197,6 +1201,11 @@ export function parseMaxDownloads(request: Request) {
 	return value;
 }
 
+export function parseGuestAccessEnabled(request: Request) {
+	const value = request.headers.get("x-guest-access-enabled")?.trim().toLowerCase();
+	return value === "true" || value === "1" || value === "on" || value === "yes";
+}
+
 export function getSafeFileName(request: Request) {
 	const rawFileName = request.headers.get("x-file-name")?.trim();
 	const fileName = rawFileName ? decodeHeaderValue(rawFileName) : null;
@@ -1329,6 +1338,10 @@ export async function getPickupCodeHashCandidates(code: string) {
 
 export async function hashManageCode(code: string) {
 	return hashLegacyCode(code);
+}
+
+export async function hashGuestAccessToken(token: string) {
+	return hashText(`guest-access:${token.trim().toUpperCase()}`);
 }
 
 async function hashLegacyCode(code: string) {

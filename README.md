@@ -26,6 +26,7 @@
 - 可配置站点访问密码、管理后台密码和只读演示模式.
 - 提供 `/admin` 管理后台, 可查看投递记录、上传/下载来源事件, 手动撤回或调整下载次数.
 - 提供站点统计接口和首页上传/下载计数展示.
+- 支持游客模式, 游客模式不需要密码, 可以一键下载文件
 
 ![Screenshot](./public/_____zh.jpeg)
 
@@ -59,5 +60,6 @@ A lightweight temporary file/text delivery locker built on Cloudflare Workers, R
 - Configure a site access password, admin password, and read-only demo mode.
 - Provide an `/admin` console for viewing delivery records, upload/download source events, manual revocation, and download-count adjustments.
 - Provide a site stats API and homepage upload/download counters.
+- Supports guest mode. In guest mode, no password is required and files can be downloaded with one click
 
 ![Screenshot](./public/_____en.jpeg)
