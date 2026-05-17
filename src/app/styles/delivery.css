@@ -101,3 +101,131 @@
 	font-weight: 500;
 	line-height: 1.25;
 }
+
+.guest-page {
+	background:
+		linear-gradient(180deg, var(--canvas), var(--surface-soft) 66%, var(--canvas));
+}
+
+.guest-panel {
+	border-color: var(--hairline);
+	background: var(--surface-card);
+	padding: clamp(28px, 5vw, 48px);
+}
+
+.guest-header {
+	border-bottom: 1px solid var(--hairline-soft);
+	padding-bottom: 28px;
+}
+
+.guest-header h2 {
+	font-size: 44px;
+	line-height: 1.08;
+	letter-spacing: -0.02em;
+}
+
+.guest-header .panel-copy {
+	max-width: 640px;
+	color: var(--muted);
+	font-size: 16px;
+}
+
+.guest-delivery-summary {
+	min-width: 0;
+	width: 100%;
+}
+
+.guest-file-name {
+	margin: 0;
+	color: var(--ink);
+	font-size: 20px;
+	font-weight: 500;
+	line-height: 1.35;
+}
+
+.guest-status-pill {
+	font-size: 13px;
+	font-weight: 500;
+	padding: 7px 12px;
+}
+
+.guest-status-available {
+	background: rgba(93, 184, 114, 0.16);
+	color: #2f7742;
+}
+
+.guest-status-expired,
+.guest-status-depleted {
+	background: rgba(232, 165, 90, 0.2);
+	color: #8f5b1e;
+}
+
+.guest-status-deleted {
+	background: rgba(198, 69, 69, 0.12);
+	color: var(--error);
+}
+
+.guest-meta-grid .mini-card {
+	border: 1px solid var(--hairline);
+	background: var(--canvas);
+	color: var(--ink);
+	padding: 16px;
+}
+
+.guest-meta-grid .mini-card p {
+	color: var(--muted);
+}
+
+.guest-meta-grid .mini-card strong {
+	font-size: 18px;
+}
+
+.guest-text-preview {
+	border-top: 1px solid var(--hairline-soft);
+	padding-top: 24px;
+}
+
+.guest-text-preview span {
+	color: var(--body-strong);
+}
+
+.guest-text-preview small {
+	color: var(--muted);
+}
+
+.guest-text-preview pre {
+	border-color: rgba(20, 20, 19, 0.12);
+	box-shadow: inset 0 1px 0 rgba(250, 249, 245, 0.04);
+	font-size: 15px;
+	min-height: 220px;
+}
+
+.guest-text-preview .secondary-button {
+	border-color: var(--hairline);
+	background: var(--canvas);
+	color: var(--ink);
+}
+
+.guest-text-preview .secondary-button:hover {
+	border-color: var(--primary);
+	background: var(--surface-soft);
+}
+
+.guest-action {
+	min-height: 48px;
+	font-size: 16px;
+}
+
+@media (max-width: 639px) {
+	.guest-panel {
+		padding: 24px;
+	}
+
+	.guest-header h2 {
+		font-size: 34px;
+	}
+
+	.guest-meta-grid {
+		grid-template-columns: 1fr;
+	}
+}

@@ -180,25 +180,27 @@ export default function GuestDownloadPage({ guestToken }: GuestDownloadPageProps
 	}
 
 	return (
-		<main className="app-shell min-h-screen">
-			<section className="mx-auto flex min-h-screen w-full max-w-[760px] flex-col items-center justify-center gap-8 px-5 pt-6 pb-16 sm:px-8">
-				<div className="panel panel-feature flex w-full flex-col gap-5">
-					<div>
+		<main className="app-shell guest-page min-h-screen">
+			<section className="mx-auto flex min-h-screen w-full max-w-[860px] flex-col items-center justify-center gap-8 px-5 pt-8 pb-16 sm:px-8">
+				<div className="panel panel-feature guest-panel flex w-full flex-col gap-6">
+					<div className="guest-header">
 						<h2>{t("guest.title")}</h2>
 						<p className="panel-copy">{t("guest.copy")}</p>
 					</div>
 					{loading ? <p className="panel-copy m-0">{t("guest.loading")}</p> : null}
 					{loadError ? <p className="auth-error">{loadError}</p> : null}
 					{delivery && (
-						<div className="delivery-box flex flex-col gap-4">
+						<div className="guest-delivery-summary flex flex-col gap-4">
 							<div className="flex items-start justify-between gap-4">
 								<div className="min-w-0">
-									<p className="truncate font-semibold">{delivery.fileName}</p>
+									<p className="guest-file-name truncate">{delivery.fileName}</p>
 									<p className="panel-copy">{formatBytes(delivery.size)}</p>
 								</div>
-								<span className="status-pill flex-none rounded-full px-2.5 py-[5px]">{statusText[delivery.status]}</span>
+								<span className={`status-pill guest-status-pill guest-status-${delivery.status} flex-none rounded-full px-2.5 py-[5px]`}>
+									{statusText[delivery.status]}
+								</span>
 							</div>
-							<div className="grid grid-cols-2 gap-3 text-sm">
+							<div className="guest-meta-grid grid grid-cols-2 gap-3 text-sm">
 								<Mini label={t("guest.status")} value={statusText[delivery.status]} />
 								<Mini
 									label={t("pickup.remaining")}
@@ -214,7 +216,7 @@ export default function GuestDownloadPage({ guestToken }: GuestDownloadPageProps
 						</div>
 					)}
 					{delivery?.kind === "text" && textPreview && (
-						<div className="text-preview flex flex-col gap-3">
+						<div className="text-preview guest-text-preview flex flex-col gap-3">
 							<div className="flex items-center justify-between gap-3">
 								<span>{t("pickup.preview")}</span>
 								<small>
@@ -238,7 +240,7 @@ export default function GuestDownloadPage({ guestToken }: GuestDownloadPageProps
 						</div>
 					)}
 					<button
-						className="primary-button inline-flex min-h-10 items-center justify-center gap-[9px] rounded-lg px-5 text-sm leading-none font-medium no-underline"
+						className="primary-button guest-action inline-flex min-h-10 items-center justify-center gap-[9px] rounded-lg px-5 text-sm leading-none font-medium no-underline"
 						disabled={busy || loading || !delivery || delivery.status !== "available"}
 						type="button"
 						onClick={openGuestDelivery}

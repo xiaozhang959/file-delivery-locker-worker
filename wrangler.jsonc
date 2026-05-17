@@ -45,8 +45,14 @@
 		}
 	],
 	"d1_databases": [
+		// {
+		// 	"binding": "DB",
+		// 	"migrations_dir": "migrations"
+		// },
 		{
 			"binding": "DB",
+			"database_name": "my-file-delivery-locker-worker",
+			"database_id": "b6cffc49-cd00-4147-98f1-1749555a36ec",
 			"migrations_dir": "migrations"
 		}
 	]
