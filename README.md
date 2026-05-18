@@ -10,7 +10,7 @@
 ![](https://img.shields.io/badge/Cloudflare-0?label=&logo=cloudflare&logoColor=fff&color=f78220)
 ![](https://img.shields.io/badge/Bun.js-f3e8d8?label=&logo=bun&logoColor=f3e8d8&color=0b0a08)
 
-[部署文档](./docs/deploy.md) | [开发文档](./docs/development.md)
+[部署文档](./docs/deploy.md) | [开发文档](./docs/development.md) | [在线示例](https://fdlw-demo.meorion.moe/)
 
 ## 功能
 
@@ -44,7 +44,7 @@ A lightweight temporary file/text delivery locker built on Cloudflare Workers, R
 ![](https://img.shields.io/badge/Cloudflare-0?label=&logo=cloudflare&logoColor=fff&color=f78220)
 ![](https://img.shields.io/badge/Bun.js-f3e8d8?label=&logo=bun&logoColor=f3e8d8&color=0b0a08)
 
-[Development documentation](./docs/deploy.md) | [Deployment documentation](./docs/development.md)
+[Development documentation](./docs/deploy.md) | [Deployment documentation](./docs/development.md) | [Demo](https://fdlw-demo.meorion.moe/)
 
 ## Features
 
