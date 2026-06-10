@@ -194,8 +194,11 @@ bun run cf-typegen
 - 对象存储后端：Cloudflare R2 或 S3 兼容 API。
 - S3 endpoint、bucket、region、access key、secret、session token、path-style 开关。
 - 是否允许前台上传时自定义取件码。
+- 对象缓存秒数；`0` 表示关闭，正整数表示下载/预览时缓存对象正文的 TTL。
 
 后台保存的 S3 Secret 不会回显，输入框留空会保留现有值。运行时优先使用 `/admin` 保存的配置；未保存时回退使用环境变量配置。
+
+对象缓存使用 Worker 内部 Cache API，只缓存对象正文，不缓存最终下载响应。命中缓存时仍会检查 D1 投递状态、扣减下载/查看次数并记录事件，因此不会绕过取件限制；只是避免在 TTL 内重复读取 R2 / S3。
 
 ## 项目结构
 

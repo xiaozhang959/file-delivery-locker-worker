@@ -86,6 +86,7 @@ type StorageSettings = {
 
 type UploadSettings = {
 	customPickupCodeEnabled: boolean;
+	objectCacheTtlSeconds: number;
 };
 
 type ApiError = {
@@ -132,6 +133,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 	const [editMaxDownloads, setEditMaxDownloads] = useState("");
 	const [editDownloadCount, setEditDownloadCount] = useState("");
 	const [customPickupCodeEnabled, setCustomPickupCodeEnabled] = useState(true);
+	const [objectCacheTtlSeconds, setObjectCacheTtlSeconds] = useState("0");
 	const [storageBackend, setStorageBackend] = useState<StorageBackend>("r2");
 	const [s3Endpoint, setS3Endpoint] = useState("");
 	const [s3Bucket, setS3Bucket] = useState("");
@@ -188,6 +190,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 
 	const applySettings = useCallback((data: SettingsResponse) => {
 		setCustomPickupCodeEnabled(data.upload.customPickupCodeEnabled);
+		setObjectCacheTtlSeconds(String(data.upload.objectCacheTtlSeconds));
 		setStorageBackend(data.storage.backend);
 		setS3Endpoint(data.storage.s3.endpoint);
 		setS3Bucket(data.storage.s3.bucket);
@@ -250,6 +253,11 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 				return;
 			}
 		}
+		const nextObjectCacheTtlSeconds = Number(objectCacheTtlSeconds);
+		if (!Number.isInteger(nextObjectCacheTtlSeconds) || nextObjectCacheTtlSeconds < 0) {
+			setMessage(t("admin.invalidCacheTtl"));
+			return;
+		}
 
 		setSettingsBusy(true);
 		setMessage("");
@@ -276,6 +284,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 					},
 					upload: {
 						customPickupCodeEnabled,
+						objectCacheTtlSeconds: nextObjectCacheTtlSeconds,
 					},
 				}),
 			});
@@ -514,7 +523,7 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 						</button>
 					</div>
 
-					<div className="grid gap-4 min-[860px]:grid-cols-[220px_1fr]">
+					<div className="grid gap-4 min-[860px]:grid-cols-[220px_220px_1fr]">
 						<label className="field flex flex-col gap-2">
 							<span>{t("admin.storageBackend")}</span>
 							<select
@@ -526,6 +535,18 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 								<option value="r2">{t("admin.storageR2")}</option>
 								<option value="s3">{t("admin.storageS3")}</option>
 							</select>
+						</label>
+						<label className="field flex flex-col gap-2">
+							<span>{t("admin.objectCacheTtl")}</span>
+							<input
+								className="h-[42px] w-full"
+								disabled={demoMode || settingsBusy}
+								min={0}
+								type="number"
+								value={objectCacheTtlSeconds}
+								onChange={(event) => setObjectCacheTtlSeconds(event.target.value)}
+							/>
+							<small>{t("admin.objectCacheTtlHint")}</small>
 						</label>
 						<label className="field inline-flex min-h-[42px] items-start gap-3 self-end">
 							<input

@@ -41,6 +41,12 @@
 
 管理员可以在 `/admin` 的“运行设置”中关闭自定义取件码。关闭后前台不再显示自定义取件码输入框，直接调用上传 API 传入 `x-pickup-code` 也会被拒绝。
 
+## 对象内容缓存
+
+`/admin` 的“运行设置”可以配置对象缓存秒数。默认 `0` 表示关闭；设置为正整数后，下载文件或预览文本时会优先读取 Worker 内部 Cache API 中的对象正文。
+
+缓存只减少 R2 / S3 读取次数，不会绕过取件校验或下载次数限制：每次取件仍会检查 D1 状态并扣减下载/查看次数，最终返回给浏览器的响应仍是 `no-store`。
+
 ## 对象存储配置
 
 默认使用 Cloudflare R2，保持 `STORAGE_BACKEND=r2` 并绑定 `FILE_BUCKET` 即可。
@@ -105,6 +111,12 @@ When uploading a file or storing text, you can enter a custom pickup code. Rules
 - Leave it blank to let the backend generate a random pickup code.
 
 Admins can disable custom pickup codes in `/admin` under **Runtime Settings**. When disabled, the upload form hides the custom-code input and direct upload API calls with `x-pickup-code` are rejected.
+
+## Object content cache
+
+`/admin` **Runtime Settings** can configure the object cache TTL in seconds. The default `0` disables it. When set to a positive integer, file downloads and text previews first try the Worker internal Cache API for the stored object body.
+
+The cache only reduces R2 / S3 reads. It does not bypass pickup checks or download/view limits: every request still checks D1 and increments the download count, and the browser-facing response remains `no-store`.
 
 ## Object storage configuration
 

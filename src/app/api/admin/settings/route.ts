@@ -5,6 +5,7 @@ import {
 	getPublicStorageSettings,
 	getUploadSettings,
 	json,
+	normalizeObjectCacheTtlSeconds,
 	requireAdminAuth,
 	requireCsrf,
 	requireWritableMode,
@@ -16,6 +17,7 @@ type SettingsRequestBody = {
 	storage?: StorageSettingsUpdate;
 	upload?: {
 		customPickupCodeEnabled?: boolean;
+		objectCacheTtlSeconds?: number;
 	};
 };
 
@@ -71,6 +73,7 @@ export async function PATCH(request: Request) {
 	if (body.upload) {
 		await saveUploadSettings(db, {
 			customPickupCodeEnabled: body.upload.customPickupCodeEnabled !== false,
+			objectCacheTtlSeconds: normalizeObjectCacheTtlSeconds(body.upload.objectCacheTtlSeconds),
 		});
 	}
 

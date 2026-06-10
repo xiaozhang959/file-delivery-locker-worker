@@ -24,5 +24,5 @@ export default async function Home() {
 
 async function getHomeUploadSettings() {
 	const db = await getCloudflareDb();
-	return db ? getUploadSettings(db) : { customPickupCodeEnabled: true };
+	return db ? getUploadSettings(db) : { customPickupCodeEnabled: true, objectCacheTtlSeconds: 0 };
 }

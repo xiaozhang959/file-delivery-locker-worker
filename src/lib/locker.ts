@@ -110,6 +110,7 @@ export type PublicStorageSettings = {
 
 export type UploadSettings = {
 	customPickupCodeEnabled: boolean;
+	objectCacheTtlSeconds: number;
 };
 
 export type StorageSettingsUpdate = {
@@ -140,6 +141,7 @@ type StoredStorageSettings = {
 
 type StoredUploadSettings = {
 	customPickupCodeEnabled?: boolean;
+	objectCacheTtlSeconds?: number;
 };
 
 type AppSettingRow = {
@@ -172,6 +174,8 @@ type LockerR2Object = {
 	text(): Promise<string>;
 };
 
+export type LockerStoredObject = LockerR2Object;
+
 type LockerR2PutOptions = {
 	httpMetadata?: {
 		contentDisposition?: string;
@@ -185,6 +189,14 @@ export type LockerBucket = {
 	get(key: string): Promise<LockerR2Object | null>;
 	put(key: string, value: ReadableStream | ArrayBuffer, options?: LockerR2PutOptions): Promise<unknown>;
 	delete(key: string): Promise<void>;
+};
+
+type CacheWaitUntil = {
+	waitUntil(promise: Promise<unknown>): void;
+};
+
+type WorkerCacheStorage = CacheStorage & {
+	default?: Cache;
 };
 
 const fileDeliveryColumns: Record<string, string> = {
@@ -959,6 +971,7 @@ export async function getUploadSettings(db: LockerDb): Promise<UploadSettings> {
 	const stored = parseStoredUploadSettings(await readAppSetting(db, UPLOAD_SETTINGS_KEY));
 	return {
 		customPickupCodeEnabled: stored?.customPickupCodeEnabled ?? true,
+		objectCacheTtlSeconds: normalizeObjectCacheTtlSeconds(stored?.objectCacheTtlSeconds),
 	};
 }
 
@@ -968,6 +981,7 @@ export async function saveUploadSettings(db: LockerDb, settings: UploadSettings)
 		UPLOAD_SETTINGS_KEY,
 		JSON.stringify({
 			customPickupCodeEnabled: settings.customPickupCodeEnabled,
+			objectCacheTtlSeconds: normalizeObjectCacheTtlSeconds(settings.objectCacheTtlSeconds),
 		} satisfies StoredUploadSettings),
 	);
 }
@@ -1435,6 +1449,91 @@ export function json(data: unknown, init?: ResponseInit | number) {
 	});
 }
 
+export async function getStoredObjectWithCache(
+	bucket: LockerBucket,
+	storageKey: string,
+	cacheTtlSeconds: number,
+	ctx?: CacheWaitUntil,
+) {
+	const ttl = normalizeObjectCacheTtlSeconds(cacheTtlSeconds);
+	if (ttl <= 0) {
+		return bucket.get(storageKey);
+	}
+
+	const cache = getDefaultObjectCache();
+	const cacheRequest = getObjectCacheRequest(storageKey);
+	if (cache) {
+		const cachedResponse = await cache.match(cacheRequest);
+		if (cachedResponse) {
+			return storedObjectFromResponse(cachedResponse);
+		}
+	}
+
+	const object = await bucket.get(storageKey);
+	if (!object || !cache) {
+		return object;
+	}
+
+	const headers = new Headers({
+		"cache-control": `public, max-age=${ttl}`,
+		"x-locker-object-size": String(object.size),
+	});
+	if (object.httpMetadata?.contentType) {
+		headers.set("content-type", object.httpMetadata.contentType);
+	}
+	if (object.httpEtag) {
+		headers.set("etag", object.httpEtag);
+	}
+
+	const response = new Response(object.body, { headers });
+	const cacheWrite = cache.put(cacheRequest, response.clone());
+	if (ctx) {
+		ctx.waitUntil(cacheWrite.catch((error) => console.warn(error)));
+	} else {
+		await cacheWrite.catch((error) => console.warn(error));
+	}
+
+	return storedObjectFromResponse(response);
+}
+
+export async function deleteStoredObjectCache(storageKey: string) {
+	const cache = getDefaultObjectCache();
+	if (!cache) {
+		return;
+	}
+
+	await cache.delete(getObjectCacheRequest(storageKey));
+}
+
+export function normalizeObjectCacheTtlSeconds(value: unknown) {
+	const parsed = Number(value ?? 0);
+	if (!Number.isInteger(parsed) || parsed < 0) {
+		return 0;
+	}
+
+	return Math.min(parsed, 60 * 60 * 24);
+}
+
+function getDefaultObjectCache() {
+	return (globalThis.caches as WorkerCacheStorage | undefined)?.default ?? null;
+}
+
+function getObjectCacheRequest(storageKey: string) {
+	return new Request(`https://file-delivery-locker.internal/object-cache/${encodeURIComponent(storageKey)}`);
+}
+
+function storedObjectFromResponse(response: Response): LockerStoredObject {
+	return {
+		body: response.body ?? new Blob([]).stream(),
+		size: parseStorageObjectSize(response.headers.get("x-locker-object-size") ?? response.headers.get("content-length")),
+		httpMetadata: {
+			contentType: response.headers.get("content-type") ?? undefined,
+		},
+		httpEtag: response.headers.get("etag") ?? "",
+		text: () => response.text(),
+	};
+}
+
 export async function createPickupPowChallenge(db: LockerDb, request: Request) {
 	const difficulty = await getPickupPowDifficulty(db, request);
 	const challenge = await cap.createChallenge({
@@ -1849,6 +1948,7 @@ export async function deleteStoredObjectIfUnreferenced(db: LockerDb, bucket: Loc
 
 	if (!activeReference) {
 		await bucket.delete(storageKey);
+		await deleteStoredObjectCache(storageKey);
 	}
 }
 

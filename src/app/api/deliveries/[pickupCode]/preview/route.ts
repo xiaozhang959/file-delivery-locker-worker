@@ -10,6 +10,8 @@ import {
 	getCloudflareBindings,
 	getPickupCodeHashCandidates,
 	getRequestSource,
+	getStoredObjectWithCache,
+	getUploadSettings,
 	isPickupAccessTokenValid,
 	isValidPickupCode,
 	isUnavailable,
@@ -103,7 +105,8 @@ export async function GET(request: Request, context: { params: Promise<{ pickupC
 		return json({ error: `Delivery is ${unavailable}.` }, 410);
 	}
 
-	const object = await bucket.get(row.storage_key);
+	const uploadSettings = await getUploadSettings(db);
+	const object = await getStoredObjectWithCache(bucket, row.storage_key, uploadSettings.objectCacheTtlSeconds, ctx);
 	if (!object) {
 		if (!demoMode) {
 			ctx.waitUntil(markDeleted(db, bucket, row, now, "missing_object"));

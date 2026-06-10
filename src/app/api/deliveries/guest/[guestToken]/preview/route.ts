@@ -9,6 +9,8 @@ import {
 	type LockerDb,
 	getCloudflareBindings,
 	getRequestSource,
+	getStoredObjectWithCache,
+	getUploadSettings,
 	hashGuestAccessToken,
 	isUnavailable,
 	json,
@@ -92,7 +94,8 @@ export async function GET(request: Request, context: { params: Promise<{ guestTo
 		return json({ error: `Delivery is ${unavailable}.` }, 410);
 	}
 
-	const object = await bucket.get(row.storage_key);
+	const uploadSettings = await getUploadSettings(db);
+	const object = await getStoredObjectWithCache(bucket, row.storage_key, uploadSettings.objectCacheTtlSeconds, ctx);
 	if (!object) {
 		ctx.waitUntil(markDeleted(db, bucket, row, now, "missing_object"));
 		return json({ error: "Stored text is missing." }, 404);

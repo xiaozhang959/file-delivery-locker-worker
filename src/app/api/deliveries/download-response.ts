@@ -6,6 +6,8 @@ import {
 	deleteStoredObjectIfUnreferenced,
 	type DeliveryRow,
 	getRequestSource,
+	getStoredObjectWithCache,
+	getUploadSettings,
 	isUnavailable,
 	json,
 	recordDeliveryEvent,
@@ -53,7 +55,8 @@ export async function createDeliveryDownloadResponse({
 		return json({ error: `Delivery is ${unavailable}.` }, 410);
 	}
 
-	const object = await bucket.get(row.storage_key);
+	const uploadSettings = await getUploadSettings(db);
+	const object = await getStoredObjectWithCache(bucket, row.storage_key, uploadSettings.objectCacheTtlSeconds, ctx);
 	if (!object) {
 		ctx.waitUntil(markDeleted(db, bucket, row, now, "missing_object"));
 		return json({ error: "Stored file is missing." }, 404);
