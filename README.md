@@ -30,6 +30,31 @@
 - 提供站点统计接口和首页上传/下载计数展示.
 - 支持游客模式, 游客模式不需要密码, 可以一键下载文件
 
+## 上传取件码
+
+上传文件或寄存文本时，可以填写自定义取件码。取件码规则：
+
+- 必须是 6 位字母或数字。
+- 字母会自动转为大写。
+- 不能和已有投递记录重复。
+- 留空时后端会自动生成随机取件码。
+
+## 对象存储配置
+
+默认使用 Cloudflare R2，保持 `STORAGE_BACKEND=r2` 并绑定 `FILE_BUCKET` 即可。
+
+如果要使用 S3 兼容 API，将 Worker 环境变量改为：
+
+```text
+STORAGE_BACKEND=s3
+S3_ENDPOINT=https://s3.example.com
+S3_BUCKET=file-delivery-locker
+S3_REGION=auto
+S3_FORCE_PATH_STYLE=true
+```
+
+同时将 `S3_ACCESS_KEY_ID` 和 `S3_SECRET_ACCESS_KEY` 配置为 Worker Secret。AWS S3 请把 `S3_REGION` 改成真实 region；如果对象存储要求 virtual-hosted-style URL，可设置 `S3_FORCE_PATH_STYLE=false`。
+
 ![Screenshot](./public/_____zh.jpeg)
 
 ---
@@ -65,5 +90,30 @@ A lightweight temporary file/text delivery locker built on Cloudflare Workers, D
 - Provide an `/admin` console for viewing delivery records, upload/download source events, manual revocation, and download-count adjustments.
 - Provide a site stats API and homepage upload/download counters.
 - Supports guest mode. In guest mode, no password is required and files can be downloaded with one click
+
+## Upload pickup code
+
+When uploading a file or storing text, you can enter a custom pickup code. Rules:
+
+- It must be exactly 6 letters or digits.
+- Letters are normalized to uppercase.
+- It cannot duplicate an existing delivery.
+- Leave it blank to let the backend generate a random pickup code.
+
+## Object storage configuration
+
+Cloudflare R2 is the default. Keep `STORAGE_BACKEND=r2` and bind `FILE_BUCKET`.
+
+To use an S3-compatible API, set these Worker variables:
+
+```text
+STORAGE_BACKEND=s3
+S3_ENDPOINT=https://s3.example.com
+S3_BUCKET=file-delivery-locker
+S3_REGION=auto
+S3_FORCE_PATH_STYLE=true
+```
+
+Add `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` as Worker Secrets. For AWS S3, set `S3_REGION` to the real region. If your provider requires virtual-hosted-style URLs, set `S3_FORCE_PATH_STYLE=false`.
 
 ![Screenshot](./public/_____en.jpeg)
