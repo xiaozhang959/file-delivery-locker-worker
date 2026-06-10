@@ -22,6 +22,7 @@ type UploadPanelProps = {
 	maxDownloadsInput: string;
 	maxDownloadsUnlimited: boolean;
 	guestAccessEnabled: boolean;
+	customPickupCodeEnabled: boolean;
 	customPickupCode: string;
 	selectedFileName: string | null;
 	textContent: string;
@@ -48,6 +49,7 @@ export function UploadPanel({
 	maxDownloadsInput,
 	maxDownloadsUnlimited,
 	guestAccessEnabled,
+	customPickupCodeEnabled,
 	customPickupCode,
 	selectedFileName,
 	textContent,
@@ -203,22 +205,24 @@ export function UploadPanel({
 			)}
 
 			<div className="grid gap-4 sm:grid-cols-2">
-				<label className="field flex flex-col gap-2 sm:col-span-2">
-					<span>{t("upload.customPickupCode")}</span>
-					<input
-						autoComplete="off"
-						className="h-[42px] w-full"
-						disabled={demoMode}
-						inputMode="text"
-						maxLength={PICKUP_CODE_LENGTH}
-						placeholder={t("upload.customPickupCodePlaceholder")}
-						spellCheck={false}
-						type="text"
-						value={customPickupCode}
-						onChange={(event) => onCustomPickupCodeChange(event.target.value)}
-					/>
-					<small>{t("upload.customPickupCodeHint")}</small>
-				</label>
+				{customPickupCodeEnabled ? (
+					<label className="field flex flex-col gap-2 sm:col-span-2">
+						<span>{t("upload.customPickupCode")}</span>
+						<input
+							autoComplete="off"
+							className="h-[42px] w-full"
+							disabled={demoMode}
+							inputMode="text"
+							maxLength={PICKUP_CODE_LENGTH}
+							placeholder={t("upload.customPickupCodePlaceholder")}
+							spellCheck={false}
+							type="text"
+							value={customPickupCode}
+							onChange={(event) => onCustomPickupCodeChange(event.target.value)}
+						/>
+						<small>{t("upload.customPickupCodeHint")}</small>
+					</label>
+				) : null}
 				<label className="field flex flex-col gap-2">
 					<span>{t("upload.expiry")}</span>
 					<select

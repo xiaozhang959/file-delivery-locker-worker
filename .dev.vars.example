@@ -2,6 +2,8 @@
 SITE_PASSWORD=change-me-site-password
 ADMIN_PASSWORD=change-me-admin-password
 PICKUP_CODE_PEPPER=change-me-long-random-pickup-code-pepper
+# Optional. Used to encrypt S3 secrets saved from /admin. Falls back to PICKUP_CODE_PEPPER when omitted.
+# STORAGE_CONFIG_KEY=change-me-long-random-storage-config-key
 
 # Storage backend: r2 (default) or s3.
 STORAGE_BACKEND=r2

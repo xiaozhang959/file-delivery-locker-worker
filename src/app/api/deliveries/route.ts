@@ -12,6 +12,7 @@ import {
 	getContentType,
 	getRequestSource,
 	getSafeFileName,
+	getUploadSettings,
 	hashContentBytes,
 	hashGuestAccessToken,
 	hashManageCode,
@@ -92,6 +93,11 @@ export async function POST(request: Request) {
 	const expiresAt = expiryHours === 0 ? 0 : createdAt + expiryHours * 60 * 60 * 1000;
 	const objectKey = `deliveries/${createdAt}/${id}`;
 	const rawCustomPickupCode = request.headers.get("x-pickup-code")?.trim() ?? "";
+	const uploadSettings = await getUploadSettings(db);
+	if (rawCustomPickupCode && !uploadSettings.customPickupCodeEnabled) {
+		return json({ error: "Custom pickup codes are disabled." }, 403);
+	}
+
 	const customPickupCode = normalizePickupCode(rawCustomPickupCode);
 	if (rawCustomPickupCode && customPickupCode.length !== PICKUP_CODE_LENGTH) {
 		return json({ error: "Custom pickup code must be 6 letters or digits." }, 400);

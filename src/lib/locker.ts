@@ -22,6 +22,8 @@ export const PICKUP_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1000;
 export const AUTH_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const AUTH_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const EMPTY_SHA256_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const STORAGE_SETTINGS_KEY = "storage";
+const UPLOAD_SETTINGS_KEY = "upload";
 const AUTH_LOCK_THRESHOLD = 5;
 const AUTH_LOCK_BASE_MS = 60 * 1000;
 const AUTH_LOCK_MAX_MS = 15 * 60 * 1000;
@@ -33,6 +35,7 @@ type SiteEnv = {
 	SITE_PASSWORD?: string;
 	ADMIN_PASSWORD?: string;
 	PICKUP_CODE_PEPPER?: string;
+	STORAGE_CONFIG_KEY?: string;
 	DEMO_MODE?: string;
 	STORAGE_BACKEND?: string;
 	S3_ENDPOINT?: string;
@@ -88,6 +91,59 @@ type AuthLoginFailureRow = {
 	failure_count: number;
 	window_started_at: number;
 	locked_until: number | null;
+};
+
+export type StorageBackend = "r2" | "s3";
+
+export type PublicStorageSettings = {
+	backend: StorageBackend;
+	s3: {
+		endpoint: string;
+		bucket: string;
+		region: string;
+		accessKeyId: string;
+		secretAccessKeySet: boolean;
+		sessionTokenSet: boolean;
+		forcePathStyle: boolean;
+	};
+};
+
+export type UploadSettings = {
+	customPickupCodeEnabled: boolean;
+};
+
+export type StorageSettingsUpdate = {
+	backend: StorageBackend;
+	s3?: {
+		endpoint?: string;
+		bucket?: string;
+		region?: string;
+		accessKeyId?: string;
+		secretAccessKey?: string;
+		sessionToken?: string;
+		forcePathStyle?: boolean;
+	};
+};
+
+type StoredStorageSettings = {
+	backend?: string;
+	s3?: {
+		endpoint?: string;
+		bucket?: string;
+		region?: string;
+		accessKeyId?: string;
+		secretAccessKey?: string | null;
+		sessionToken?: string | null;
+		forcePathStyle?: boolean;
+	};
+};
+
+type StoredUploadSettings = {
+	customPickupCodeEnabled?: boolean;
+};
+
+type AppSettingRow = {
+	value: string;
 };
 
 export type AuthSession = {
@@ -312,29 +368,131 @@ export type DeliveryEventInput = {
 export async function getCloudflareBindings() {
 	const { env, ctx } = await getCloudflareContext({ async: true });
 	const siteEnv = env as SiteEnv;
-	if (siteEnv.DB) {
-		await ensureDatabaseSchema(siteEnv.DB);
-	}
+	const db = await ensureSiteDatabase(siteEnv);
 
 	return {
-		db: siteEnv.DB,
-		bucket: getStorageBucket(siteEnv),
+		db,
+		bucket: await getStorageBucket(siteEnv, db),
 		sitePassword: normalizeSitePassword(siteEnv.SITE_PASSWORD),
 		demoMode: isDemoModeEnabled(siteEnv.DEMO_MODE),
 		ctx,
 	};
 }
 
-function getStorageBucket(env: SiteEnv) {
-	const backend = env.STORAGE_BACKEND?.trim().toLowerCase() ?? "r2";
-	if (backend === "s3") {
-		return createS3CompatibleBucket(env);
+export async function getCloudflareDb() {
+	const { env } = await getCloudflareContext({ async: true });
+	return ensureSiteDatabase(env as SiteEnv);
+}
+
+async function ensureSiteDatabase(siteEnv: SiteEnv) {
+	if (siteEnv.DB) {
+		await ensureDatabaseSchema(siteEnv.DB);
+	}
+
+	return siteEnv.DB;
+}
+
+async function getStorageBucket(env: SiteEnv, db?: LockerDb) {
+	const storage = db ? await getEffectiveStorageSettings(db, env) : getEnvironmentStorageSettings(env);
+	if (storage.backend === "s3") {
+		return storage.s3.config ? createS3CompatibleBucket(storage.s3.config) : null;
 	}
 
 	return env.FILE_BUCKET ?? null;
 }
 
-function createS3CompatibleBucket(env: SiteEnv): LockerBucket | null {
+type EffectiveStorageSettings = {
+	backend: StorageBackend;
+	publicSettings: PublicStorageSettings;
+	s3: {
+		config: S3CompatibleBucketConfig | null;
+	};
+};
+
+export async function getPublicStorageSettings(db: LockerDb) {
+	const { env } = await getCloudflareContext({ async: true });
+	const siteEnv = env as SiteEnv;
+	const stored = parseStoredStorageSettings(await readAppSetting(db, STORAGE_SETTINGS_KEY));
+	if (!stored) {
+		return getEnvironmentStorageSettings(siteEnv).publicSettings;
+	}
+
+	const backend = normalizeStorageBackend(stored.backend);
+	const storedS3 = stored.s3 ?? {};
+	return createPublicStorageSettings(backend, {
+		endpoint: storedS3.endpoint?.trim() ?? "",
+		bucket: storedS3.bucket?.trim() ?? "",
+		region: storedS3.region?.trim() || "auto",
+		accessKeyId: storedS3.accessKeyId?.trim() ?? "",
+		forcePathStyle: storedS3.forcePathStyle ?? true,
+		secretAccessKeySet: Boolean(storedS3.secretAccessKey || siteEnv.S3_SECRET_ACCESS_KEY?.trim()),
+		sessionTokenSet: Boolean(storedS3.sessionToken || siteEnv.S3_SESSION_TOKEN?.trim()),
+	});
+}
+
+async function getEffectiveStorageSettings(db: LockerDb, env: SiteEnv): Promise<EffectiveStorageSettings> {
+	const stored = parseStoredStorageSettings(await readAppSetting(db, STORAGE_SETTINGS_KEY));
+	return stored ? await getStoredStorageSettings(stored, env) : getEnvironmentStorageSettings(env);
+}
+
+function getEnvironmentStorageSettings(env: SiteEnv): EffectiveStorageSettings {
+	const backend = normalizeStorageBackend(env.STORAGE_BACKEND);
+	const config = backend === "s3" ? getEnvironmentS3Config(env) : null;
+
+	return {
+		backend,
+		publicSettings: createPublicStorageSettings(backend, {
+			endpoint: env.S3_ENDPOINT?.trim() ?? "",
+			bucket: env.S3_BUCKET?.trim() ?? "",
+			region: env.S3_REGION?.trim() || "auto",
+			accessKeyId: env.S3_ACCESS_KEY_ID?.trim() ?? "",
+			forcePathStyle: parseEnvBoolean(env.S3_FORCE_PATH_STYLE, true),
+			secretAccessKeySet: Boolean(env.S3_SECRET_ACCESS_KEY?.trim()),
+			sessionTokenSet: Boolean(env.S3_SESSION_TOKEN?.trim()),
+		}),
+		s3: { config },
+	};
+}
+
+async function getStoredStorageSettings(stored: StoredStorageSettings, env: SiteEnv): Promise<EffectiveStorageSettings> {
+	const backend = normalizeStorageBackend(stored.backend);
+	const storedS3 = stored.s3 ?? {};
+	const secretAccessKey = storedS3.secretAccessKey
+		? await decryptSettingSecret(storedS3.secretAccessKey, env)
+		: env.S3_SECRET_ACCESS_KEY?.trim() || null;
+	const sessionToken = storedS3.sessionToken
+		? await decryptSettingSecret(storedS3.sessionToken, env)
+		: env.S3_SESSION_TOKEN?.trim() || null;
+	const s3 = {
+		endpoint: storedS3.endpoint?.trim() ?? "",
+		bucket: storedS3.bucket?.trim() ?? "",
+		region: storedS3.region?.trim() || "auto",
+		accessKeyId: storedS3.accessKeyId?.trim() ?? "",
+		forcePathStyle: storedS3.forcePathStyle ?? true,
+		secretAccessKeySet: Boolean(secretAccessKey),
+		sessionTokenSet: Boolean(sessionToken),
+	};
+	const config =
+		backend === "s3" && s3.endpoint && s3.bucket && s3.accessKeyId && secretAccessKey
+			? {
+					endpoint: s3.endpoint,
+					bucket: s3.bucket,
+					region: s3.region,
+					accessKeyId: s3.accessKeyId,
+					secretAccessKey,
+					sessionToken,
+					forcePathStyle: s3.forcePathStyle,
+				}
+			: null;
+
+	return {
+		backend,
+		publicSettings: createPublicStorageSettings(backend, s3),
+		s3: { config },
+	};
+}
+
+function getEnvironmentS3Config(env: SiteEnv): S3CompatibleBucketConfig | null {
 	const endpoint = env.S3_ENDPOINT?.trim();
 	const bucket = env.S3_BUCKET?.trim();
 	const accessKeyId = env.S3_ACCESS_KEY_ID?.trim();
@@ -344,7 +502,7 @@ function createS3CompatibleBucket(env: SiteEnv): LockerBucket | null {
 		return null;
 	}
 
-	const config = {
+	return {
 		endpoint,
 		bucket,
 		region: env.S3_REGION?.trim() || "auto",
@@ -353,7 +511,31 @@ function createS3CompatibleBucket(env: SiteEnv): LockerBucket | null {
 		sessionToken: env.S3_SESSION_TOKEN?.trim() || null,
 		forcePathStyle: parseEnvBoolean(env.S3_FORCE_PATH_STYLE, true),
 	};
+}
 
+function createPublicStorageSettings(
+	backend: StorageBackend,
+	s3: {
+		endpoint: string;
+		bucket: string;
+		region: string;
+		accessKeyId: string;
+		forcePathStyle: boolean;
+		secretAccessKeySet: boolean;
+		sessionTokenSet: boolean;
+	},
+): PublicStorageSettings {
+	return {
+		backend,
+		s3,
+	};
+}
+
+function normalizeStorageBackend(value?: string | null): StorageBackend {
+	return value?.trim().toLowerCase() === "s3" ? "s3" : "r2";
+}
+
+function createS3CompatibleBucket(config: S3CompatibleBucketConfig): LockerBucket {
 	return {
 		async head(key) {
 			const response = await signedS3ObjectRequest(config, "HEAD", key);
@@ -699,6 +881,16 @@ async function initializeDatabaseSchema(db: LockerDb) {
 		)
 		.run();
 
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS app_settings (
+				name TEXT PRIMARY KEY,
+				value TEXT NOT NULL,
+				updated_at INTEGER NOT NULL
+			)`,
+		)
+		.run();
+
 	await createDatabaseIndexes(db);
 }
 
@@ -748,6 +940,93 @@ async function createDatabaseIndexes(db: LockerDb) {
 
 	for (const statement of statements) {
 		await db.prepare(statement).run();
+	}
+}
+
+async function readAppSetting(db: LockerDb, name: string) {
+	const row = await db.prepare("SELECT value FROM app_settings WHERE name = ?").bind(name).first<AppSettingRow>();
+	return row?.value ?? null;
+}
+
+async function writeAppSetting(db: LockerDb, name: string, value: string, now = Date.now()) {
+	await db
+		.prepare("INSERT OR REPLACE INTO app_settings (name, value, updated_at) VALUES (?, ?, ?)")
+		.bind(name, value, now)
+		.run();
+}
+
+export async function getUploadSettings(db: LockerDb): Promise<UploadSettings> {
+	const stored = parseStoredUploadSettings(await readAppSetting(db, UPLOAD_SETTINGS_KEY));
+	return {
+		customPickupCodeEnabled: stored?.customPickupCodeEnabled ?? true,
+	};
+}
+
+export async function saveUploadSettings(db: LockerDb, settings: UploadSettings) {
+	await writeAppSetting(
+		db,
+		UPLOAD_SETTINGS_KEY,
+		JSON.stringify({
+			customPickupCodeEnabled: settings.customPickupCodeEnabled,
+		} satisfies StoredUploadSettings),
+	);
+}
+
+export async function saveStorageSettings(db: LockerDb, input: StorageSettingsUpdate) {
+	const { env } = await getCloudflareContext({ async: true });
+	const siteEnv = env as SiteEnv;
+	const existing = parseStoredStorageSettings(await readAppSetting(db, STORAGE_SETTINGS_KEY));
+	const existingS3 = existing?.s3 ?? {};
+	const nextS3 = input.s3 ?? {};
+	const secretAccessKey = nextS3.secretAccessKey?.trim()
+		? await encryptSettingSecret(nextS3.secretAccessKey.trim(), siteEnv)
+		: existingS3.secretAccessKey ?? null;
+	const sessionToken =
+		nextS3.sessionToken === undefined
+			? existingS3.sessionToken ?? null
+			: nextS3.sessionToken.trim()
+				? await encryptSettingSecret(nextS3.sessionToken.trim(), siteEnv)
+				: null;
+
+	const stored: StoredStorageSettings = {
+		backend: normalizeStorageBackend(input.backend),
+		s3: {
+			endpoint: nextS3.endpoint?.trim() ?? existingS3.endpoint ?? "",
+			bucket: nextS3.bucket?.trim() ?? existingS3.bucket ?? "",
+			region: nextS3.region?.trim() || existingS3.region || "auto",
+			accessKeyId: nextS3.accessKeyId?.trim() ?? existingS3.accessKeyId ?? "",
+			secretAccessKey,
+			sessionToken,
+			forcePathStyle: nextS3.forcePathStyle ?? existingS3.forcePathStyle ?? true,
+		},
+	};
+
+	await writeAppSetting(db, STORAGE_SETTINGS_KEY, JSON.stringify(stored));
+}
+
+function parseStoredUploadSettings(value: string | null): StoredUploadSettings | null {
+	if (!value) {
+		return null;
+	}
+
+	try {
+		const parsed = JSON.parse(value) as StoredUploadSettings;
+		return typeof parsed === "object" && parsed !== null ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+function parseStoredStorageSettings(value: string | null): StoredStorageSettings | null {
+	if (!value) {
+		return null;
+	}
+
+	try {
+		const parsed = JSON.parse(value) as StoredStorageSettings;
+		return typeof parsed === "object" && parsed !== null ? parsed : null;
+	} catch {
+		return null;
 	}
 }
 
@@ -809,7 +1088,7 @@ export async function getSiteAuthSession(sitePassword: string | null, token?: st
 		return { valid: false, csrfToken: null };
 	}
 
-	const { db } = await getCloudflareBindings();
+	const db = await getCloudflareDb();
 	if (!db) {
 		return { valid: false, csrfToken: null };
 	}
@@ -826,7 +1105,7 @@ export async function getAdminAuthSession(adminPassword: string | null, token?: 
 		return { valid: false, csrfToken: null };
 	}
 
-	const { db } = await getCloudflareBindings();
+	const db = await getCloudflareDb();
 	if (!db) {
 		return { valid: false, csrfToken: null };
 	}
@@ -894,7 +1173,7 @@ export async function requireCsrf(request: Request, kind: AuthKind) {
 		return json({ error: "CSRF token is required." }, 403);
 	}
 
-	const { db } = await getCloudflareBindings();
+	const db = await getCloudflareDb();
 	if (!db) {
 		return json({ error: "Cloudflare bindings are not available." }, 500);
 	}
@@ -1613,6 +1892,37 @@ async function hashText(value: string) {
 	return bytesToHex(new Uint8Array(digest));
 }
 
+async function encryptSettingSecret(value: string, env: SiteEnv) {
+	const iv = new Uint8Array(12);
+	crypto.getRandomValues(iv);
+	const key = await getStorageConfigCryptoKey(env);
+	const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
+	return `aes-gcm:v1:${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(encrypted))}`;
+}
+
+async function decryptSettingSecret(value: string, env: SiteEnv) {
+	const parts = value.split(":");
+	if (parts.length !== 4 || parts[0] !== "aes-gcm" || parts[1] !== "v1") {
+		throw new Error("Stored setting secret has an unsupported format.");
+	}
+
+	const key = await getStorageConfigCryptoKey(env);
+	const iv = base64ToBytes(parts[2]);
+	const encrypted = base64ToBytes(parts[3]);
+	const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, encrypted);
+	return new TextDecoder().decode(decrypted);
+}
+
+async function getStorageConfigCryptoKey(env: SiteEnv) {
+	const secret = env.STORAGE_CONFIG_KEY?.trim() || env.PICKUP_CODE_PEPPER?.trim();
+	if (!secret) {
+		throw new Error("STORAGE_CONFIG_KEY or PICKUP_CODE_PEPPER secret is required to encrypt storage settings.");
+	}
+
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`storage-config:${secret}`));
+	return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+
 async function hmacSha256Hex(secret: string, value: string) {
 	return bytesToHex(await hmacSha256Bytes(secret, value));
 }
@@ -1628,6 +1938,23 @@ async function hmacSha256Bytes(secret: string | Uint8Array, value: string) {
 
 function bytesToHex(bytes: Uint8Array) {
 	return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+	let binary = "";
+	for (const byte of bytes) {
+		binary += String.fromCharCode(byte);
+	}
+	return btoa(binary);
+}
+
+function base64ToBytes(value: string) {
+	const binary = atob(value);
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) {
+		bytes[index] = binary.charCodeAt(index);
+	}
+	return bytes;
 }
 
 function randomIndex(max: number) {

@@ -8,6 +8,7 @@ import { formatBytes } from "../components/locker-format";
 
 type AdminStatus = "available" | "expired" | "deleted" | "depleted";
 type AdminKind = "file" | "text";
+type StorageBackend = "r2" | "s3";
 
 type AdminDelivery = {
 	id: string;
@@ -64,6 +65,29 @@ type EventsResponse = {
 	error?: string;
 };
 
+type SettingsResponse = {
+	storage: StorageSettings;
+	upload: UploadSettings;
+	error?: string;
+};
+
+type StorageSettings = {
+	backend: StorageBackend;
+	s3: {
+		endpoint: string;
+		bucket: string;
+		region: string;
+		accessKeyId: string;
+		secretAccessKeySet: boolean;
+		sessionTokenSet: boolean;
+		forcePathStyle: boolean;
+	};
+};
+
+type UploadSettings = {
+	customPickupCodeEnabled: boolean;
+};
+
 type ApiError = {
 	error?: string;
 };
@@ -103,9 +127,21 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 	const [searchInput, setSearchInput] = useState("");
 	const [query, setQuery] = useState("");
 	const [busy, setBusy] = useState<"list" | "events" | "revoke" | "counts" | null>(null);
+	const [settingsBusy, setSettingsBusy] = useState(false);
 	const [message, setMessage] = useState("");
 	const [editMaxDownloads, setEditMaxDownloads] = useState("");
 	const [editDownloadCount, setEditDownloadCount] = useState("");
+	const [customPickupCodeEnabled, setCustomPickupCodeEnabled] = useState(true);
+	const [storageBackend, setStorageBackend] = useState<StorageBackend>("r2");
+	const [s3Endpoint, setS3Endpoint] = useState("");
+	const [s3Bucket, setS3Bucket] = useState("");
+	const [s3Region, setS3Region] = useState("auto");
+	const [s3AccessKeyId, setS3AccessKeyId] = useState("");
+	const [s3SecretAccessKey, setS3SecretAccessKey] = useState("");
+	const [s3SecretAccessKeySet, setS3SecretAccessKeySet] = useState(false);
+	const [s3SessionToken, setS3SessionToken] = useState("");
+	const [s3SessionTokenSet, setS3SessionTokenSet] = useState(false);
+	const [s3ForcePathStyle, setS3ForcePathStyle] = useState(true);
 
 	const loadDeliveries = useCallback(async () => {
 		setBusy("list");
@@ -150,10 +186,111 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 		return () => window.clearTimeout(timer);
 	}, [loadDeliveries]);
 
+	const applySettings = useCallback((data: SettingsResponse) => {
+		setCustomPickupCodeEnabled(data.upload.customPickupCodeEnabled);
+		setStorageBackend(data.storage.backend);
+		setS3Endpoint(data.storage.s3.endpoint);
+		setS3Bucket(data.storage.s3.bucket);
+		setS3Region(data.storage.s3.region);
+		setS3AccessKeyId(data.storage.s3.accessKeyId);
+		setS3SecretAccessKey("");
+		setS3SecretAccessKeySet(data.storage.s3.secretAccessKeySet);
+		setS3SessionToken("");
+		setS3SessionTokenSet(data.storage.s3.sessionTokenSet);
+		setS3ForcePathStyle(data.storage.s3.forcePathStyle);
+	}, []);
+
+	const loadSettings = useCallback(async () => {
+		setSettingsBusy(true);
+		setMessage("");
+
+		try {
+			const response = await fetch("/api/admin/settings");
+			const data = await readApiJson<SettingsResponse>(response, t("admin.settingsFailed"));
+			if (!response.ok) {
+				throw new Error(data.error || t("admin.settingsFailed"));
+			}
+
+			applySettings(data);
+		} catch (error) {
+			setMessage(error instanceof Error ? error.message : t("admin.settingsFailed"));
+		} finally {
+			setSettingsBusy(false);
+		}
+	}, [applySettings, t]);
+
+	useEffect(() => {
+		const timer = window.setTimeout(() => {
+			void loadSettings();
+		}, 0);
+
+		return () => window.clearTimeout(timer);
+	}, [loadSettings]);
+
 	function applySearch(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setPage(1);
 		setQuery(searchInput.trim());
+	}
+
+	async function saveSettings(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		if (demoMode) {
+			setMessage(t("admin.demoReadonlyMessage"));
+			return;
+		}
+
+		if (storageBackend === "s3") {
+			if (!s3Endpoint.trim() || !s3Bucket.trim() || !s3Region.trim() || !s3AccessKeyId.trim()) {
+				setMessage(t("admin.storageMissingS3"));
+				return;
+			}
+			if (!s3SecretAccessKey.trim() && !s3SecretAccessKeySet) {
+				setMessage(t("admin.storageMissingSecret"));
+				return;
+			}
+		}
+
+		setSettingsBusy(true);
+		setMessage("");
+
+		try {
+			const response = await fetch("/api/admin/settings", {
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+					...csrfHeaders(csrfToken),
+				},
+				body: JSON.stringify({
+					storage: {
+						backend: storageBackend,
+						s3: {
+							endpoint: s3Endpoint,
+							bucket: s3Bucket,
+							region: s3Region,
+							accessKeyId: s3AccessKeyId,
+							secretAccessKey: s3SecretAccessKey || undefined,
+							sessionToken: s3SessionToken || undefined,
+							forcePathStyle: s3ForcePathStyle,
+						},
+					},
+					upload: {
+						customPickupCodeEnabled,
+					},
+				}),
+			});
+			const data = await readApiJson<SettingsResponse & ApiError>(response, t("admin.settingsFailed"));
+			if (!response.ok) {
+				throw new Error(data.error || t("admin.settingsFailed"));
+			}
+
+			applySettings(data);
+			setMessage(t("admin.settingsSaved"));
+		} catch (error) {
+			setMessage(error instanceof Error ? error.message : t("admin.settingsFailed"));
+		} finally {
+			setSettingsBusy(false);
+		}
 	}
 
 	function beginEdit(delivery: AdminDelivery) {
@@ -361,6 +498,108 @@ export default function AdminApp({ csrfToken, demoMode = false }: AdminAppProps)
 				</form>
 
 				{message ? <p className="auth-error">{message}</p> : null}
+
+				<form className="panel panel-feature grid gap-5" onSubmit={saveSettings}>
+					<div className="flex flex-wrap items-start justify-between gap-4">
+						<div>
+							<h2>{t("admin.settingsTitle")}</h2>
+							<p className="panel-copy">{t("admin.settingsCopy")}</p>
+						</div>
+						<button
+							className="primary-button inline-flex min-h-10 items-center justify-center rounded-lg px-5 text-sm font-medium"
+							disabled={demoMode || settingsBusy}
+							type="submit"
+						>
+							{settingsBusy ? t("admin.saving") : t("admin.saveSettings")}
+						</button>
+					</div>
+
+					<div className="grid gap-4 min-[860px]:grid-cols-[220px_1fr]">
+						<label className="field flex flex-col gap-2">
+							<span>{t("admin.storageBackend")}</span>
+							<select
+								className="h-[42px] w-full"
+								disabled={demoMode || settingsBusy}
+								value={storageBackend}
+								onChange={(event) => setStorageBackend(event.target.value as StorageBackend)}
+							>
+								<option value="r2">{t("admin.storageR2")}</option>
+								<option value="s3">{t("admin.storageS3")}</option>
+							</select>
+						</label>
+						<label className="field inline-flex min-h-[42px] items-start gap-3 self-end">
+							<input
+								checked={customPickupCodeEnabled}
+								className="mt-1"
+								disabled={demoMode || settingsBusy}
+								type="checkbox"
+								onChange={(event) => setCustomPickupCodeEnabled(event.target.checked)}
+							/>
+							<span className="flex flex-col gap-1">
+								<span>{t("admin.customPickupCodeEnabled")}</span>
+								<small>{t("admin.customPickupCodeHint")}</small>
+							</span>
+						</label>
+					</div>
+
+					{storageBackend === "s3" ? (
+						<div className="grid gap-4 border-t border-[var(--hairline)] pt-4 sm:grid-cols-2">
+							<label className="field flex flex-col gap-2">
+								<span>{t("admin.s3Endpoint")}</span>
+								<input className="h-[42px] w-full" disabled={demoMode || settingsBusy} value={s3Endpoint} onChange={(event) => setS3Endpoint(event.target.value)} placeholder="https://s3.example.com" />
+							</label>
+							<label className="field flex flex-col gap-2">
+								<span>{t("admin.s3Bucket")}</span>
+								<input className="h-[42px] w-full" disabled={demoMode || settingsBusy} value={s3Bucket} onChange={(event) => setS3Bucket(event.target.value)} />
+							</label>
+							<label className="field flex flex-col gap-2">
+								<span>{t("admin.s3Region")}</span>
+								<input className="h-[42px] w-full" disabled={demoMode || settingsBusy} value={s3Region} onChange={(event) => setS3Region(event.target.value)} placeholder="auto" />
+							</label>
+							<label className="field flex flex-col gap-2">
+								<span>{t("admin.s3AccessKeyId")}</span>
+								<input className="h-[42px] w-full" disabled={demoMode || settingsBusy} value={s3AccessKeyId} onChange={(event) => setS3AccessKeyId(event.target.value)} />
+							</label>
+							<label className="field flex flex-col gap-2">
+								<span>{t("admin.s3SecretAccessKey")}</span>
+								<input
+									autoComplete="new-password"
+									className="h-[42px] w-full"
+									disabled={demoMode || settingsBusy}
+									type="password"
+									value={s3SecretAccessKey}
+									onChange={(event) => setS3SecretAccessKey(event.target.value)}
+									placeholder={s3SecretAccessKeySet ? t("admin.secretPreserved") : ""}
+								/>
+							</label>
+							<label className="field flex flex-col gap-2">
+								<span>{t("admin.s3SessionToken")}</span>
+								<input
+									autoComplete="new-password"
+									className="h-[42px] w-full"
+									disabled={demoMode || settingsBusy}
+									type="password"
+									value={s3SessionToken}
+									onChange={(event) => setS3SessionToken(event.target.value)}
+									placeholder={s3SessionTokenSet ? t("admin.secretPreserved") : t("admin.optional")}
+								/>
+							</label>
+							<label className="field inline-flex min-h-[42px] items-start gap-3 sm:col-span-2">
+								<input
+									checked={s3ForcePathStyle}
+									className="mt-1"
+									disabled={demoMode || settingsBusy}
+									type="checkbox"
+									onChange={(event) => setS3ForcePathStyle(event.target.checked)}
+								/>
+								<span className="flex flex-col gap-1">
+									<span>{t("admin.s3ForcePathStyle")}</span>
+									<small>{t("admin.s3ForcePathStyleHint")}</small>
+								</span>
+							</label>
+						</div>
+					) : null}
+				</form>
 
 				<section className="panel flex min-w-0 flex-col gap-4 overflow-hidden">
 					<div className="overflow-x-auto">

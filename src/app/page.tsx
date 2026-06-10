@@ -1,12 +1,13 @@
 import { cookies } from "next/headers";
-import { getDemoMode, getSiteAuthSession, getSitePassword, SITE_AUTH_COOKIE } from "@/lib/locker";
+import { getCloudflareDb, getDemoMode, getSiteAuthSession, getSitePassword, getUploadSettings, SITE_AUTH_COOKIE } from "@/lib/locker";
 import LockerApp from "./locker-app";
 import PasswordGate from "./password-gate";
 
 export default async function Home() {
 	const demoMode = await getDemoMode();
+	const uploadSettings = await getHomeUploadSettings();
 	if (demoMode) {
-		return <LockerApp demoMode={demoMode} />;
+		return <LockerApp customPickupCodeEnabled={uploadSettings.customPickupCodeEnabled} demoMode={demoMode} />;
 	}
 
 	const sitePassword = await getSitePassword();
@@ -18,5 +19,10 @@ export default async function Home() {
 		return <PasswordGate />;
 	}
 
-	return <LockerApp csrfToken={session.csrfToken} demoMode={demoMode} />;
+	return <LockerApp csrfToken={session.csrfToken} customPickupCodeEnabled={uploadSettings.customPickupCodeEnabled} demoMode={demoMode} />;
+}
+
+async function getHomeUploadSettings() {
+	const db = await getCloudflareDb();
+	return db ? getUploadSettings(db) : { customPickupCodeEnabled: true };
 }

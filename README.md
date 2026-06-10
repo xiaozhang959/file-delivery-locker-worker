@@ -39,6 +39,8 @@
 - 不能和已有投递记录重复。
 - 留空时后端会自动生成随机取件码。
 
+管理员可以在 `/admin` 的“运行设置”中关闭自定义取件码。关闭后前台不再显示自定义取件码输入框，直接调用上传 API 传入 `x-pickup-code` 也会被拒绝。
+
 ## 对象存储配置
 
 默认使用 Cloudflare R2，保持 `STORAGE_BACKEND=r2` 并绑定 `FILE_BUCKET` 即可。
@@ -54,6 +56,8 @@ S3_FORCE_PATH_STYLE=true
 ```
 
 同时将 `S3_ACCESS_KEY_ID` 和 `S3_SECRET_ACCESS_KEY` 配置为 Worker Secret。AWS S3 请把 `S3_REGION` 改成真实 region；如果对象存储要求 virtual-hosted-style URL，可设置 `S3_FORCE_PATH_STYLE=false`。
+
+部署后也可以在 `/admin` 的“运行设置”里切换 R2 / S3 兼容 API 并修改 S3 配置。后台保存的 S3 Secret 会加密写入 D1；建议额外配置 `STORAGE_CONFIG_KEY` 作为加密密钥，未配置时会回退使用 `PICKUP_CODE_PEPPER`。
 
 ![Screenshot](./public/_____zh.jpeg)
 
@@ -100,6 +104,8 @@ When uploading a file or storing text, you can enter a custom pickup code. Rules
 - It cannot duplicate an existing delivery.
 - Leave it blank to let the backend generate a random pickup code.
 
+Admins can disable custom pickup codes in `/admin` under **Runtime Settings**. When disabled, the upload form hides the custom-code input and direct upload API calls with `x-pickup-code` are rejected.
+
 ## Object storage configuration
 
 Cloudflare R2 is the default. Keep `STORAGE_BACKEND=r2` and bind `FILE_BUCKET`.
@@ -115,5 +121,7 @@ S3_FORCE_PATH_STYLE=true
 ```
 
 Add `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` as Worker Secrets. For AWS S3, set `S3_REGION` to the real region. If your provider requires virtual-hosted-style URLs, set `S3_FORCE_PATH_STYLE=false`.
+
+After deployment, `/admin` **Runtime Settings** can also switch between R2 and S3-compatible storage and update S3 configuration. S3 secrets saved from the admin page are encrypted in D1. Configure `STORAGE_CONFIG_KEY` as the encryption key; if omitted, `PICKUP_CODE_PEPPER` is used as the fallback.
 
 ![Screenshot](./public/_____en.jpeg)

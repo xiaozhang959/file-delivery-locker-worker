@@ -54,6 +54,8 @@ STORAGE_BACKEND=r2
 
 `PICKUP_CODE_PEPPER` 用于生成取件码 HMAC 哈希。本地可以使用任意长字符串；生产环境必须使用高熵随机值，并且不要在活跃投递过期前轮换。
 
+`STORAGE_CONFIG_KEY` 可选，用于加密从 `/admin` 保存到 D1 的 S3 Secret；未配置时会回退使用 `PICKUP_CODE_PEPPER` 派生加密密钥。
+
 如果使用 S3 兼容对象存储，将 `STORAGE_BACKEND` 改为 `s3`，并配置：
 
 ```text
@@ -90,6 +92,7 @@ bunx wrangler d1 migrations apply file-delivery-locker --local
 - `cap_challenges`、`cap_tokens`：Cap.js Proof-of-Work 数据。
 - `pickup_pow_failures`、`pickup_access_tokens`：取件防枚举和短期访问 token。
 - `auth_sessions`、`auth_login_failures`：站点和后台登录会话、登录失败限制。
+- `app_settings`：后台运行设置，例如存储后端和自定义取件码开关。
 
 ## 启动开发服务
 
@@ -186,6 +189,14 @@ bun run cf-typegen
 
 `STORAGE_BACKEND` 默认为 `r2`。设置为 `s3` 时，后端通过 S3 Signature V4 请求 `S3_ENDPOINT`/`S3_BUCKET`，支持常见 S3 兼容 API。默认使用 path-style URL；如后端要求 virtual-hosted-style，可设置 `S3_FORCE_PATH_STYLE=false`。
 
+管理员登录 `/admin` 后也可以在“运行设置”中修改：
+
+- 对象存储后端：Cloudflare R2 或 S3 兼容 API。
+- S3 endpoint、bucket、region、access key、secret、session token、path-style 开关。
+- 是否允许前台上传时自定义取件码。
+
+后台保存的 S3 Secret 不会回显，输入框留空会保留现有值。运行时优先使用 `/admin` 保存的配置；未保存时回退使用环境变量配置。
+
 ## 项目结构
 
 ```text
@@ -195,6 +206,7 @@ src/app/admin/page.tsx                                管理后台入口
 src/app/admin/admin-app.tsx                           管理后台交互逻辑
 src/app/api/site-auth/route.ts                        站点登录
 src/app/api/admin/auth/route.ts                       后台登录
+src/app/api/admin/settings/route.ts                   后台运行设置
 src/app/api/pow/challenge/route.ts                    创建 Cap.js PoW challenge
 src/app/api/pow/redeem/route.ts                       兑换 Cap.js PoW token
 src/app/api/deliveries/route.ts                       创建文件/文本投递

@@ -34,10 +34,11 @@ function isTextUploadFile(nextFile: File) {
 
 type LockerAppProps = {
 	csrfToken?: string | null;
+	customPickupCodeEnabled?: boolean;
 	demoMode?: boolean;
 };
 
-export default function LockerApp({ csrfToken = null, demoMode = false }: LockerAppProps) {
+export default function LockerApp({ csrfToken = null, customPickupCodeEnabled = true, demoMode = false }: LockerAppProps) {
 	const { t } = useI18n();
 	const [deliveryMode, setDeliveryMode] = useState<DeliveryKind>("file");
 	const [file, setFile] = useState<File | null>(null);
@@ -150,7 +151,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		let fileName: string;
 		let contentType: string;
 		const maxDownloads = maxDownloadsUnlimited ? 0 : Number(maxDownloadsInput);
-		const normalizedCustomPickupCode = normalizePickupCode(customPickupCode);
+		const normalizedCustomPickupCode = customPickupCodeEnabled ? normalizePickupCode(customPickupCode) : "";
 		setCustomPickupCode(normalizedCustomPickupCode);
 
 		if (!maxDownloadsUnlimited && (!Number.isInteger(maxDownloads) || maxDownloads < 1)) {
@@ -427,6 +428,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 							deliveryMode={deliveryMode}
 							expiresInHours={expiresInHours}
 							guestAccessEnabled={guestAccessEnabled}
+							customPickupCodeEnabled={customPickupCodeEnabled}
 							customPickupCode={customPickupCode}
 							maxDownloadsInput={maxDownloadsInput}
 							maxDownloadsUnlimited={maxDownloadsUnlimited}
