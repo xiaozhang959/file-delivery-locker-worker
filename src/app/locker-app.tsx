@@ -46,6 +46,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 	const [maxDownloadsInput, setMaxDownloadsInput] = useState("1");
 	const [maxDownloadsUnlimited, setMaxDownloadsUnlimited] = useState(false);
 	const [guestAccessEnabled, setGuestAccessEnabled] = useState(false);
+	const [customPickupCode, setCustomPickupCode] = useState("");
 	const [pickupCode, setPickupCode] = useState("");
 	const [manageCode, setManageCode] = useState("");
 	const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -149,9 +150,16 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 		let fileName: string;
 		let contentType: string;
 		const maxDownloads = maxDownloadsUnlimited ? 0 : Number(maxDownloadsInput);
+		const normalizedCustomPickupCode = normalizePickupCode(customPickupCode);
+		setCustomPickupCode(normalizedCustomPickupCode);
 
 		if (!maxDownloadsUnlimited && (!Number.isInteger(maxDownloads) || maxDownloads < 1)) {
 			notify(t("message.invalidDownloadCount"), "warning");
+			return;
+		}
+
+		if (normalizedCustomPickupCode && normalizedCustomPickupCode.length !== PICKUP_CODE_LENGTH) {
+			notify(t("message.invalidCustomPickupCode"), "warning");
 			return;
 		}
 
@@ -189,23 +197,29 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 
 		setBusy("upload");
 		try {
+			const headers: Record<string, string> = {
+				"content-type": contentType,
+				...csrfHeaders(csrfToken),
+				"x-content-type": contentType,
+				"x-delivery-kind": deliveryMode,
+				"x-expires-in-hours": String(expiresInHours),
+				"x-file-name": encodeURIComponent(fileName),
+				"x-guest-access-enabled": guestAccessEnabled ? "true" : "false",
+				"x-max-downloads": String(maxDownloads),
+			};
+
+			if (normalizedCustomPickupCode) {
+				headers["x-pickup-code"] = normalizedCustomPickupCode;
+			}
+
 			const response = await fetch("/api/deliveries", {
 				method: "POST",
-				headers: {
-					"content-type": contentType,
-					...csrfHeaders(csrfToken),
-					"x-content-type": contentType,
-					"x-delivery-kind": deliveryMode,
-					"x-expires-in-hours": String(expiresInHours),
-					"x-file-name": encodeURIComponent(fileName),
-					"x-guest-access-enabled": guestAccessEnabled ? "true" : "false",
-					"x-max-downloads": String(maxDownloads),
-				},
+				headers,
 				body,
 			});
 			const data = await readApiJson<ApiError & UploadResult>(response, t("message.uploadFailed"));
 			if (!response.ok) {
-				throw new Error(t("message.uploadFailed"));
+				throw new Error(response.status === 409 ? t("message.customPickupCodeTaken") : data.error || t("message.uploadFailed"));
 			}
 
 			setUploadResult(data);
@@ -413,6 +427,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 							deliveryMode={deliveryMode}
 							expiresInHours={expiresInHours}
 							guestAccessEnabled={guestAccessEnabled}
+							customPickupCode={customPickupCode}
 							maxDownloadsInput={maxDownloadsInput}
 							maxDownloadsUnlimited={maxDownloadsUnlimited}
 							selectedFileName={file?.name ?? null}
@@ -420,6 +435,7 @@ export default function LockerApp({ csrfToken = null, demoMode = false }: Locker
 							uploadBadge={uploadBadge}
 							uploadResult={uploadResult}
 							onCopy={copy}
+							onCustomPickupCodeChange={(value) => setCustomPickupCode(normalizePickupCode(value))}
 							onDeliveryModeChange={setDeliveryMode}
 							onExpiresInHoursChange={setExpiresInHours}
 							onFileChange={setFile}

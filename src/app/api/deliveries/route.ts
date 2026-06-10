@@ -1,8 +1,10 @@
 import {
 	MAX_FILE_SIZE,
 	MAX_TEXT_SIZE,
+	PICKUP_CODE_LENGTH,
 	contentDisposition,
 	createCode,
+	createCustomPickupCode,
 	createUniquePickupCode,
 	deleteStoredObjectIfUnreferenced,
 	findReusableStoredObject,
@@ -13,6 +15,7 @@ import {
 	hashContentBytes,
 	hashGuestAccessToken,
 	hashManageCode,
+	normalizePickupCode,
 	json,
 	parseDeliveryKind,
 	parseContentLength,
@@ -88,7 +91,17 @@ export async function POST(request: Request) {
 	const createdAt = Date.now();
 	const expiresAt = expiryHours === 0 ? 0 : createdAt + expiryHours * 60 * 60 * 1000;
 	const objectKey = `deliveries/${createdAt}/${id}`;
-	const pickup = await createUniquePickupCode(db);
+	const rawCustomPickupCode = request.headers.get("x-pickup-code")?.trim() ?? "";
+	const customPickupCode = normalizePickupCode(rawCustomPickupCode);
+	if (rawCustomPickupCode && customPickupCode.length !== PICKUP_CODE_LENGTH) {
+		return json({ error: "Custom pickup code must be 6 letters or digits." }, 400);
+	}
+
+	const pickup = customPickupCode ? await createCustomPickupCode(db, customPickupCode) : await createUniquePickupCode(db);
+	if (!pickup) {
+		return json({ error: "Pickup code is already in use." }, 409);
+	}
+
 	const manageCode = createCode(16);
 	const guestAccessToken = parseGuestAccessEnabled(request) ? createCode(32) : null;
 	const contentType = deliveryKind === "text" ? "text/plain;charset=utf-8" : getContentType(request);

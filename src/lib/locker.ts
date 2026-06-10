@@ -21,18 +21,27 @@ export const PICKUP_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const PICKUP_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1000;
 export const AUTH_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const AUTH_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1000;
+const EMPTY_SHA256_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const AUTH_LOCK_THRESHOLD = 5;
 const AUTH_LOCK_BASE_MS = 60 * 1000;
 const AUTH_LOCK_MAX_MS = 15 * 60 * 1000;
 const CAP_CHALLENGE_SIZE = 32;
 
 type SiteEnv = {
-	DB: LockerDb;
-	FILE_BUCKET: LockerBucket;
+	DB?: LockerDb;
+	FILE_BUCKET?: LockerBucket;
 	SITE_PASSWORD?: string;
 	ADMIN_PASSWORD?: string;
 	PICKUP_CODE_PEPPER?: string;
 	DEMO_MODE?: string;
+	STORAGE_BACKEND?: string;
+	S3_ENDPOINT?: string;
+	S3_BUCKET?: string;
+	S3_REGION?: string;
+	S3_ACCESS_KEY_ID?: string;
+	S3_SECRET_ACCESS_KEY?: string;
+	S3_SESSION_TOKEN?: string;
+	S3_FORCE_PATH_STYLE?: string;
 };
 
 type LockerD1RunResult = {
@@ -116,6 +125,7 @@ type LockerR2PutOptions = {
 };
 
 export type LockerBucket = {
+	head?(key: string): Promise<unknown | null>;
 	get(key: string): Promise<LockerR2Object | null>;
 	put(key: string, value: ReadableStream | ArrayBuffer, options?: LockerR2PutOptions): Promise<unknown>;
 	delete(key: string): Promise<void>;
@@ -308,11 +318,241 @@ export async function getCloudflareBindings() {
 
 	return {
 		db: siteEnv.DB,
-		bucket: siteEnv.FILE_BUCKET,
+		bucket: getStorageBucket(siteEnv),
 		sitePassword: normalizeSitePassword(siteEnv.SITE_PASSWORD),
 		demoMode: isDemoModeEnabled(siteEnv.DEMO_MODE),
 		ctx,
 	};
+}
+
+function getStorageBucket(env: SiteEnv) {
+	const backend = env.STORAGE_BACKEND?.trim().toLowerCase() ?? "r2";
+	if (backend === "s3") {
+		return createS3CompatibleBucket(env);
+	}
+
+	return env.FILE_BUCKET ?? null;
+}
+
+function createS3CompatibleBucket(env: SiteEnv): LockerBucket | null {
+	const endpoint = env.S3_ENDPOINT?.trim();
+	const bucket = env.S3_BUCKET?.trim();
+	const accessKeyId = env.S3_ACCESS_KEY_ID?.trim();
+	const secretAccessKey = env.S3_SECRET_ACCESS_KEY?.trim();
+
+	if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
+		return null;
+	}
+
+	const config = {
+		endpoint,
+		bucket,
+		region: env.S3_REGION?.trim() || "auto",
+		accessKeyId,
+		secretAccessKey,
+		sessionToken: env.S3_SESSION_TOKEN?.trim() || null,
+		forcePathStyle: parseEnvBoolean(env.S3_FORCE_PATH_STYLE, true),
+	};
+
+	return {
+		async head(key) {
+			const response = await signedS3ObjectRequest(config, "HEAD", key);
+			if (response.status === 404) {
+				return null;
+			}
+
+			if (!response.ok) {
+				await throwStorageResponseError("S3 HEAD", response);
+			}
+
+			return {
+				httpEtag: response.headers.get("etag") ?? "",
+				size: parseStorageObjectSize(response.headers.get("content-length")),
+			};
+		},
+		async get(key) {
+			const response = await signedS3ObjectRequest(config, "GET", key);
+			if (response.status === 404) {
+				return null;
+			}
+
+			if (!response.ok) {
+				await throwStorageResponseError("S3 GET", response);
+			}
+
+			return {
+				body: response.body ?? new Blob([]).stream(),
+				size: parseStorageObjectSize(response.headers.get("content-length")),
+				httpMetadata: {
+					contentType: response.headers.get("content-type") ?? undefined,
+				},
+				httpEtag: response.headers.get("etag") ?? "",
+				text: () => response.text(),
+			};
+		},
+		async put(key, value, options) {
+			const body = value instanceof ArrayBuffer ? value : await new Response(value).arrayBuffer();
+			const headers = new Headers();
+
+			if (options?.httpMetadata?.contentType) {
+				headers.set("content-type", options.httpMetadata.contentType);
+			}
+
+			if (options?.httpMetadata?.contentDisposition) {
+				headers.set("content-disposition", options.httpMetadata.contentDisposition);
+			}
+
+			for (const [name, metadataValue] of Object.entries(options?.customMetadata ?? {})) {
+				headers.set(`x-amz-meta-${normalizeS3MetadataName(name)}`, encodeURIComponent(metadataValue));
+			}
+
+			const response = await signedS3ObjectRequest(config, "PUT", key, headers, body, await hashContentBytes(body));
+			if (!response.ok) {
+				await throwStorageResponseError("S3 PUT", response);
+			}
+		},
+		async delete(key) {
+			const response = await signedS3ObjectRequest(config, "DELETE", key);
+			if (!response.ok && response.status !== 404) {
+				await throwStorageResponseError("S3 DELETE", response);
+			}
+		},
+	};
+}
+
+type S3CompatibleBucketConfig = {
+	endpoint: string;
+	bucket: string;
+	region: string;
+	accessKeyId: string;
+	secretAccessKey: string;
+	sessionToken: string | null;
+	forcePathStyle: boolean;
+};
+
+async function signedS3ObjectRequest(
+	config: S3CompatibleBucketConfig,
+	method: "DELETE" | "GET" | "HEAD" | "PUT",
+	key: string,
+	headers = new Headers(),
+	body?: BodyInit,
+	payloadHash = EMPTY_SHA256_HASH,
+) {
+	const url = buildS3ObjectUrl(config, key);
+	const requestHeaders = new Headers(headers);
+	const now = new Date();
+	const amzDate = toAmzDate(now);
+	const dateStamp = amzDate.slice(0, 8);
+	const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`;
+
+	requestHeaders.set("x-amz-content-sha256", payloadHash);
+	requestHeaders.set("x-amz-date", amzDate);
+	if (config.sessionToken) {
+		requestHeaders.set("x-amz-security-token", config.sessionToken);
+	}
+
+	const { canonicalHeaders, signedHeaders } = getCanonicalS3Headers(requestHeaders, url.host);
+	const canonicalRequest = [method, url.pathname, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+	const stringToSign = [
+		"AWS4-HMAC-SHA256",
+		amzDate,
+		credentialScope,
+		await hashText(canonicalRequest),
+	].join("\n");
+	const signature = await createS3Signature(config.secretAccessKey, dateStamp, config.region, stringToSign);
+
+	requestHeaders.set(
+		"authorization",
+		`AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+	);
+
+	return fetch(url, {
+		method,
+		headers: requestHeaders,
+		body,
+	});
+}
+
+function buildS3ObjectUrl(config: S3CompatibleBucketConfig, key: string) {
+	const url = new URL(config.endpoint);
+	const endpointPath = url.pathname.replace(/\/+$/, "");
+	const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+
+	if (config.forcePathStyle) {
+		url.pathname = `${endpointPath}/${encodeURIComponent(config.bucket)}/${encodedKey}`;
+	} else {
+		url.hostname = `${config.bucket}.${url.hostname}`;
+		url.pathname = `${endpointPath}/${encodedKey}`;
+	}
+	url.search = "";
+
+	return url;
+}
+
+function getCanonicalS3Headers(headers: Headers, host: string) {
+	const canonicalHeaderMap = new Map<string, string>([["host", host]]);
+	headers.forEach((value, name) => {
+		canonicalHeaderMap.set(name.toLowerCase(), value.trim().replace(/\s+/g, " "));
+	});
+
+	const entries = [...canonicalHeaderMap.entries()].sort(([left], [right]) => {
+		if (left < right) {
+			return -1;
+		}
+		if (left > right) {
+			return 1;
+		}
+		return 0;
+	});
+	const canonicalHeaders = entries.map(([name, value]) => `${name}:${value}\n`).join("");
+	const signedHeaders = entries.map(([name]) => name).join(";");
+
+	return { canonicalHeaders, signedHeaders };
+}
+
+async function createS3Signature(secretAccessKey: string, dateStamp: string, region: string, stringToSign: string) {
+	const dateKey = await hmacSha256Bytes(`AWS4${secretAccessKey}`, dateStamp);
+	const regionKey = await hmacSha256Bytes(dateKey, region);
+	const serviceKey = await hmacSha256Bytes(regionKey, "s3");
+	const signingKey = await hmacSha256Bytes(serviceKey, "aws4_request");
+	const signature = await hmacSha256Bytes(signingKey, stringToSign);
+	return bytesToHex(signature);
+}
+
+function parseEnvBoolean(value: string | undefined, fallback: boolean) {
+	if (value === undefined) {
+		return fallback;
+	}
+
+	const normalized = value.trim().toLowerCase();
+	if (["1", "true", "yes", "on"].includes(normalized)) {
+		return true;
+	}
+	if (["0", "false", "no", "off"].includes(normalized)) {
+		return false;
+	}
+
+	return fallback;
+}
+
+function normalizeS3MetadataName(value: string) {
+	const normalized = value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
+	return normalized || "metadata";
+}
+
+function parseStorageObjectSize(value: string | null) {
+	const size = Number(value ?? 0);
+	return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+function toAmzDate(value: Date) {
+	return value.toISOString().replace(/[:-]|\.\d{3}/g, "");
+}
+
+async function throwStorageResponseError(action: string, response: Response): Promise<never> {
+	const detail = await response.text().catch(() => "");
+	const suffix = detail.trim() ? `: ${detail.trim().slice(0, 240)}` : "";
+	throw new Error(`${action} failed with HTTP ${response.status}${suffix}`);
 }
 
 export async function ensureDatabaseSchema(db: LockerDb) {
@@ -1263,6 +1503,25 @@ export async function createUniquePickupCode(db: LockerDb) {
 	throw new Error("Unable to generate a unique pickup code.");
 }
 
+export async function createCustomPickupCode(db: LockerDb, value: string) {
+	const code = normalizePickupCode(value);
+	if (!isValidPickupCode(code)) {
+		return null;
+	}
+
+	const [pickupCodeHash, legacyPickupCodeHash] = await getPickupCodeHashCandidates(code);
+	const existing = await db
+		.prepare("SELECT id FROM file_deliveries WHERE pickup_code_hash IN (?, ?) LIMIT 1")
+		.bind(pickupCodeHash, legacyPickupCodeHash)
+		.first<{ id: string }>();
+
+	if (existing) {
+		return null;
+	}
+
+	return { code, hash: pickupCodeHash };
+}
+
 export async function hashContentBytes(bytes: ArrayBuffer) {
 	const digest = await crypto.subtle.digest("SHA-256", bytes);
 	return bytesToHex(new Uint8Array(digest));
@@ -1286,7 +1545,8 @@ export async function findReusableStoredObject(db: LockerDb, bucket: LockerBucke
 
 	for (const row of rows.results ?? []) {
 		const storageKey = row.storage_key;
-		if (storageKey && (await bucket.get(storageKey))) {
+		const object = storageKey && (bucket.head ? await bucket.head(storageKey) : await bucket.get(storageKey));
+		if (object) {
 			return storageKey;
 		}
 	}
@@ -1354,10 +1614,16 @@ async function hashText(value: string) {
 }
 
 async function hmacSha256Hex(secret: string, value: string) {
+	return bytesToHex(await hmacSha256Bytes(secret, value));
+}
+
+async function hmacSha256Bytes(secret: string | Uint8Array, value: string) {
 	const encoder = new TextEncoder();
-	const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+	const keyBytes = typeof secret === "string" ? encoder.encode(secret) : secret;
+	const keyData = new Uint8Array(keyBytes).buffer;
+	const key = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 	const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(value));
-	return bytesToHex(new Uint8Array(signature));
+	return new Uint8Array(signature);
 }
 
 function bytesToHex(bytes: Uint8Array) {

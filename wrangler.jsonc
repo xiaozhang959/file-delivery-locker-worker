@@ -30,7 +30,9 @@
 	},
 	"upload_source_maps": true,
 	"vars": {
-		"DEMO_MODE": "false"
+		"DEMO_MODE": "false",
+		// "r2" uses the FILE_BUCKET binding below. Set to "s3" to use S3-compatible API env vars/secrets instead.
+		"STORAGE_BACKEND": "r2"
 	},
 	"secrets": {
 		"required": [

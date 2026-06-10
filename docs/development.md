@@ -1,6 +1,6 @@
 # 开发文档
 
-这份文档面向本地开发和调试。项目主体是一个运行在 Cloudflare Workers 上的 Next.js 应用，使用 R2 保存文件正文，使用 D1 保存投递记录、登录会话、PoW challenge、取件访问 token 和审计事件。
+这份文档面向本地开发和调试。项目主体是一个运行在 Cloudflare Workers 上的 Next.js 应用，使用对象存储（默认 Cloudflare R2，也可切换到 S3 兼容 API）保存文件正文，使用 D1 保存投递记录、登录会话、PoW challenge、取件访问 token 和审计事件。
 
 ## 环境准备
 
@@ -30,7 +30,8 @@ bunx wrangler login
 
 - `name`：Worker 名称。
 - `services[0].service`：自引用 service binding，需要和 `name` 保持一致。
-- `r2_buckets[0].binding`：保持为 `FILE_BUCKET`，代码通过 `env.FILE_BUCKET` 访问 R2。
+- `vars.STORAGE_BACKEND`：对象存储后端，`r2` 使用 Cloudflare R2，`s3` 使用 S3 兼容 API。
+- `r2_buckets[0].binding`：使用 `STORAGE_BACKEND=r2` 时保持为 `FILE_BUCKET`，代码通过 `env.FILE_BUCKET` 访问 R2；使用 `s3` 时可移除这个 binding。
 - `d1_databases[0].binding`：保持为 `DB`，代码通过 `env.DB` 访问 D1。
 - `d1_databases[0].migrations_dir`：保持为 `migrations`。
 - `vars.DEMO_MODE`：只读演示模式；开发写入流程时建议保持 `false`。
@@ -48,9 +49,23 @@ cp .dev.vars.example .dev.vars
 SITE_PASSWORD=change-me-site-password
 ADMIN_PASSWORD=change-me-admin-password
 PICKUP_CODE_PEPPER=change-me-long-random-pickup-code-pepper
+STORAGE_BACKEND=r2
 ```
 
 `PICKUP_CODE_PEPPER` 用于生成取件码 HMAC 哈希。本地可以使用任意长字符串；生产环境必须使用高熵随机值，并且不要在活跃投递过期前轮换。
+
+如果使用 S3 兼容对象存储，将 `STORAGE_BACKEND` 改为 `s3`，并配置：
+
+```text
+S3_ENDPOINT=https://s3.example.com
+S3_BUCKET=file-delivery-locker
+S3_REGION=auto
+S3_ACCESS_KEY_ID=change-me-access-key
+S3_SECRET_ACCESS_KEY=change-me-secret-key
+S3_FORCE_PATH_STYLE=true
+```
+
+`S3_REGION` 对 Cloudflare R2 S3 API 可使用 `auto`；AWS S3 请填写真实 region。生产环境建议把 `S3_ACCESS_KEY_ID` 和 `S3_SECRET_ACCESS_KEY` 配为 Worker Secret，不要写进仓库。
 
 ## 初始化本地 D1
 
@@ -101,7 +116,7 @@ bun run dev
 bun run preview
 ```
 
-这个命令会先构建 OpenNext 产物，再在本地预览 Worker 行为，适合检查 R2、D1、静态资源、API 路由和 Cloudflare 运行时差异。
+这个命令会先构建 OpenNext 产物，再在本地预览 Worker 行为，适合检查对象存储、D1、静态资源、API 路由和 Cloudflare 运行时差异。
 
 ## 常用脚本
 
@@ -113,7 +128,7 @@ bun run cf:prepare # 检查/创建远程 R2 和 D1，并生成部署用 Wrangler
 bun run cf-typegen # 根据 Wrangler 配置生成 Cloudflare Env 类型
 ```
 
-`bun run cf:prepare` 会读取 `wrangler.jsonc`，检查或创建远程 R2 bucket 和 D1 database，然后生成 `.wrangler/deploy-wrangler.jsonc`。这个文件用于部署流程，不需要提交。如果同名 D1 已存在但不像本项目数据库，脚本会停止，避免误用其他数据库。
+`bun run cf:prepare` 会读取 `wrangler.jsonc`，检查或创建远程 D1 database，然后生成 `.wrangler/deploy-wrangler.jsonc`。当 `STORAGE_BACKEND=r2` 时还会检查或创建远程 R2 bucket；当 `STORAGE_BACKEND=s3` 时会跳过 R2 并从生成配置中移除 R2 binding。这个文件用于部署流程，不需要提交。如果同名 D1 已存在但不像本项目数据库，脚本会停止，避免误用其他数据库。
 
 修改 Cloudflare 绑定、变量或资源配置后，可以重新生成类型：
 
@@ -153,10 +168,11 @@ bun run cf-typegen
 - 文件最大 100 MB。
 - 文本最大 256 KB。
 - `x-delivery-kind` 可为 `file` 或 `text`，缺省为 `file`。
+- `x-pickup-code` 可选；填写时必须规范化为 6 位字母或数字，且不能和历史投递重复。
 - `x-expires-in-hours` 可为 `0`、`1`、`24`、`168`；`0` 表示不过期。
 - `x-max-downloads` 可为 `0` 或大于等于 `1` 的整数；`0` 表示不限次数。
 
-上传时会计算内容哈希。相同文件或文本会复用已有 R2 对象，但仍会生成新的取件码和管理码。
+上传时会计算内容哈希。相同文件或文本会复用已有对象存储内容，但仍会生成新的取件码和管理码。
 
 ## 配置说明
 
@@ -167,6 +183,8 @@ bun run cf-typegen
 `PICKUP_CODE_PEPPER` 是短取件码 HMAC 的 Secret。生产环境必须配置；如果轮换，旧 Pepper 创建的 HMAC 取件码无法继续匹配。历史 SHA-256 取件码仍兼容查询。
 
 `DEMO_MODE` 开启后，首页无需密码，系统进入只读演示状态：不能上传文件、寄存文本、撤回文件、修改下载次数、读取文本内容或下载文件。后台仍需 `ADMIN_PASSWORD` 登录。
+
+`STORAGE_BACKEND` 默认为 `r2`。设置为 `s3` 时，后端通过 S3 Signature V4 请求 `S3_ENDPOINT`/`S3_BUCKET`，支持常见 S3 兼容 API。默认使用 path-style URL；如后端要求 virtual-hosted-style，可设置 `S3_FORCE_PATH_STYLE=false`。
 
 ## 项目结构
 
@@ -188,7 +206,7 @@ src/app/api/admin/deliveries/route.ts                 后台投递列表
 src/app/api/admin/deliveries/[id]/events/route.ts     后台事件列表
 src/app/api/admin/deliveries/[id]/counts/route.ts     后台调整下载次数
 src/app/api/admin/deliveries/[id]/revoke/route.ts     后台撤回投递
-src/lib/locker.ts                                     校验、哈希、会话、PoW、Cloudflare 绑定和通用工具
+src/lib/locker.ts                                     校验、哈希、会话、PoW、对象存储适配和通用工具
 migrations/                                           D1 数据库迁移
 scripts/prepare-cloudflare-deploy.mjs                 Cloudflare 远程资源准备脚本
 wrangler.jsonc                                        Cloudflare 本地和部署基础配置
@@ -204,6 +222,7 @@ curl -X POST http://localhost:3000/api/deliveries \
   -H "x-content-type: application/octet-stream" \
   -H "x-file-name: example.txt" \
   -H "x-delivery-kind: file" \
+  -H "x-pickup-code: ABC123" \
   -H "x-expires-in-hours: 24" \
   -H "x-max-downloads: 1" \
   --data-binary @example.txt

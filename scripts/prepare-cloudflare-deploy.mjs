@@ -47,12 +47,17 @@ main().catch((error) => {
 async function main() {
 	const config = await readWranglerConfig(sourceConfigPath);
 	const workerName = requireNonEmptyString(config.name, "wrangler.jsonc name");
-	const r2Binding = requireFirstBinding(config.r2_buckets, "r2_buckets");
+	const storageBackend = normalizeStorageBackend(process.env.STORAGE_BACKEND || config.vars?.STORAGE_BACKEND);
+	const r2Binding = storageBackend === "s3" ? null : requireFirstBinding(config.r2_buckets, "r2_buckets");
 	const d1Binding = requireFirstBinding(config.d1_databases, "d1_databases");
-	const bucketName = process.env.CF_R2_BUCKET_NAME || r2Binding.bucket_name || workerName;
+	const bucketName = r2Binding ? process.env.CF_R2_BUCKET_NAME || r2Binding.bucket_name || workerName : null;
 	const databaseName = process.env.CF_D1_DATABASE_NAME || d1Binding.database_name || workerName;
 
-	await prepareR2Bucket(bucketName);
+	if (r2Binding && bucketName) {
+		await prepareR2Bucket(bucketName);
+	} else {
+		console.log("STORAGE_BACKEND=s3; skipping Cloudflare R2 bucket preparation.");
+	}
 	const d1Database = await prepareD1Database(databaseName);
 
 	const generatedConfig = {
@@ -63,12 +68,6 @@ async function main() {
 			...config.assets,
 			directory: relativeToGeneratedConfig(config.assets?.directory),
 		},
-		r2_buckets: [
-			{
-				...r2Binding,
-				bucket_name: bucketName,
-			},
-		],
 		d1_databases: [
 			{
 				...d1Binding,
@@ -78,6 +77,17 @@ async function main() {
 			},
 		],
 	};
+
+	if (r2Binding && bucketName) {
+		generatedConfig.r2_buckets = [
+			{
+				...r2Binding,
+				bucket_name: bucketName,
+			},
+		];
+	} else {
+		delete generatedConfig.r2_buckets;
+	}
 
 	await mkdir(path.dirname(generatedConfigPath), { recursive: true });
 	await writeFile(generatedConfigPath, `${JSON.stringify(generatedConfig, null, "\t")}\n`);
@@ -283,6 +293,10 @@ function requireNonEmptyString(value, label) {
 	}
 
 	return value.trim();
+}
+
+function normalizeStorageBackend(value) {
+	return String(value || "r2").trim().toLowerCase() === "s3" ? "s3" : "r2";
 }
 
 function relativeToGeneratedConfig(value) {

@@ -44,6 +44,16 @@
 
 添加完成点击部署
 
+默认会使用 Cloudflare R2。若要改用 S3 兼容 API，请在 Worker 环境变量中设置：
+
+- `STORAGE_BACKEND=s3`
+- `S3_ENDPOINT`
+- `S3_BUCKET`
+- `S3_REGION`（Cloudflare R2 S3 API 可用 `auto`，AWS S3 请填真实 region）
+- `S3_FORCE_PATH_STYLE`（默认 `true`）
+
+并将 `S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY` 作为密钥添加。使用 S3 后端时，部署准备脚本会跳过 R2 bucket 创建。
+
 然后切换到 R2 和 D1 的页面, 将上次自动创建的数据库和对象存储删了
 
 回到 workers 页面, 点击`最近的部署失败`, 再点击重试构建, 坐和放宽...
@@ -109,6 +119,16 @@ These values mean:
 ![add secret](./image/add_secret.png)
 
 After adding the secrets, click deploy.
+
+Cloudflare R2 is used by default. To use an S3-compatible API instead, set these Worker variables:
+
+- `STORAGE_BACKEND=s3`
+- `S3_ENDPOINT`
+- `S3_BUCKET`
+- `S3_REGION` (`auto` works for Cloudflare R2 S3 API; use the real region for AWS S3)
+- `S3_FORCE_PATH_STYLE` (defaults to `true`)
+
+Then add `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` as secrets. With the S3 backend enabled, the deploy preparation script skips R2 bucket creation.
 
 Then go to the R2 and D1 pages, and delete the database and object storage bucket that were created during the failed deployment attempt.
 

@@ -12,7 +12,7 @@ import "./goey-toast.css";
 
 export const metadata: Metadata = {
 	title: "文件快递柜",
-	description: "基于 Cloudflare R2 和 D1 的匿名文件中转柜",
+	description: "基于对象存储和 D1 的匿名文件中转柜",
 };
 
 export default function RootLayout({

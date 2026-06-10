@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { DragEvent, FormEvent } from "react";
 import { useI18n } from "../i18n";
 import { CodeBlock } from "./code-block";
+import { PICKUP_CODE_LENGTH } from "./locker-format";
 import type { DeliveryKind, UploadResult } from "./locker-types";
 
 const expiryOptions = [
@@ -21,11 +22,13 @@ type UploadPanelProps = {
 	maxDownloadsInput: string;
 	maxDownloadsUnlimited: boolean;
 	guestAccessEnabled: boolean;
+	customPickupCode: string;
 	selectedFileName: string | null;
 	textContent: string;
 	uploadBadge: string;
 	uploadResult: UploadResult | null;
 	onCopy: (value: string) => void;
+	onCustomPickupCodeChange: (value: string) => void;
 	onDeliveryModeChange: (mode: DeliveryKind) => void;
 	onExpiresInHoursChange: (value: number) => void;
 	onFileChange: (file: File | null) => void;
@@ -45,11 +48,13 @@ export function UploadPanel({
 	maxDownloadsInput,
 	maxDownloadsUnlimited,
 	guestAccessEnabled,
+	customPickupCode,
 	selectedFileName,
 	textContent,
 	uploadBadge,
 	uploadResult,
 	onCopy,
+	onCustomPickupCodeChange,
 	onDeliveryModeChange,
 	onExpiresInHoursChange,
 	onFileChange,
@@ -198,6 +203,22 @@ export function UploadPanel({
 			)}
 
 			<div className="grid gap-4 sm:grid-cols-2">
+				<label className="field flex flex-col gap-2 sm:col-span-2">
+					<span>{t("upload.customPickupCode")}</span>
+					<input
+						autoComplete="off"
+						className="h-[42px] w-full"
+						disabled={demoMode}
+						inputMode="text"
+						maxLength={PICKUP_CODE_LENGTH}
+						placeholder={t("upload.customPickupCodePlaceholder")}
+						spellCheck={false}
+						type="text"
+						value={customPickupCode}
+						onChange={(event) => onCustomPickupCodeChange(event.target.value)}
+					/>
+					<small>{t("upload.customPickupCodeHint")}</small>
+				</label>
 				<label className="field flex flex-col gap-2">
 					<span>{t("upload.expiry")}</span>
 					<select
